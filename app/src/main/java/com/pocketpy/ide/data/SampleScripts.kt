@@ -12,13 +12,13 @@ print("=" * 45)
 
 start = time.time()
 
-# Generate 50,000 prime candidates and calculate powers
+# Generate 25,000 prime candidates and calculate powers
 evens = [x**2 for x in range(25000) if x % 2 == 0]
 total = sum(evens)
 
 elapsed = (time.time() - start) * 1000
-print(f"Generated {len(evens):,} elements in {elapsed:.2f} ms")
-print(f"Checksum Total: {total:,}")
+print(f"Generated {len(evens)} elements in {elapsed:.2f} ms")
+print(f"Checksum Total: {total}")
 print("PocketPy native C11 execution: BLAZING FAST!")
 """.trimIndent(),
 
@@ -26,16 +26,17 @@ print("PocketPy native C11 execution: BLAZING FAST!")
 import math
 
 print("--- Real-time ASCII Sinusoid Visualizer ---")
-width = 50
-steps = 25
+width = 40
+steps = 20
 
 for i in range(steps):
     val = math.sin(i * 0.35)
     pos = int((val + 1.0) / 2.0 * (width - 1))
     line = [" "] * width
     line[width // 2] = "|"
-    line[pos] = "●"
-    print(f"{i:02d} |" + "".join(line) + f"| {val:+.3f}")
+    line[pos] = "*"
+    sign = "+" if val >= 0 else ""
+    print(f"{i:02d} |" + "".join(line) + f"| {sign}{val:.3f}")
 
 print("\nDone! Visualized without external plotting dependencies.")
 """.trimIndent(),
@@ -97,7 +98,7 @@ class DeyeTelemetry:
     def print_summary(self):
         print(f"PV1: {self.pv1_v:.1f} V @ {self.pv1_a:.1f} A -> {self.pv1_watts} W")
         print(f"PV2: {self.pv2_v:.1f} V @ {self.pv2_a:.1f} A -> {self.pv2_watts} W")
-        print(f"☀️ Total Solar Power : {self.total_solar_watts:,} W")
+        print(f"☀️ Total Solar Power : {self.total_solar_watts} W")
         print(f"🔋 Battery State      : {self.battery_soc} %")
 
 # Sample simulated Deye telemetry register frame
