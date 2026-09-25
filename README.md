@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/juergen874/PocketPy-IDE/releases/download/v1.0/app-debug.apk">
+  <a href="https://github.com/juergen874/PocketPy-IDE/releases/download/v1.0/PocketPy-IDE-1.0.apk">
     <img src="https://img.shields.io/badge/Download_APK-v1.0-brightgreen?style=for-the-badge&logo=android" alt="Download APK" />
   </a>
 </p>
@@ -26,7 +26,7 @@ While traditional Python Android solutions (like Chaquopy or PyTorch Mobile) res
 
 Pre-compiled Android APKs are available on the GitHub Releases page:
 
-* 📱 **Direct Download:** [**app-debug.apk (v1.0)**](https://github.com/juergen874/PocketPy-IDE/releases/download/v1.0/app-debug.apk)
+* 📱 **Direct Download:** [**PocketPy-IDE-1.0.apk**](https://github.com/juergen874/PocketPy-IDE/releases/download/v1.0/PocketPy-IDE-1.0.apk)
 * 📦 **Release Overview:** [PocketPy IDE v1.0 Release](https://github.com/juergen874/PocketPy-IDE/releases/tag/v1.0)
 * ⚙️ **Compatibility:** Android 7.0+ (API 24+) • Architectures: `arm64-v8a`, `x86_64`
 
@@ -126,7 +126,7 @@ chmod +x gradlew
 
 The compiled APK will be located at:
 ```
-app/build/outputs/apk/debug/app-debug.apk
+app/build/outputs/apk/debug/PocketPy-IDE-1.0.apk
 ```
 
 ---
