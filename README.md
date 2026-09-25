@@ -10,9 +10,25 @@
   <img src="https://img.shields.io/badge/License-MIT-lightgrey.svg" alt="License" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/juergen874/PocketPy-IDE/releases/download/v1.0/app-debug.apk">
+    <img src="https://img.shields.io/badge/Download_APK-v1.0-brightgreen?style=for-the-badge&logo=android" alt="Download APK" />
+  </a>
+</p>
+
 **PocketPy IDE** is an ultra-fast, lightweight, and fully offline Python IDE for Android powered by the embeddable **[PocketPy](https://github.com/pocketpy/pocketpy)** C11 engine.
 
 While traditional Python Android solutions (like Chaquopy or PyTorch Mobile) result in massive **80–120 MB** APK downloads and noticeable interpreter cold starts, **PocketPy IDE** delivers full Python script execution, syntax highlighting, an ANSI terminal, and a visual HTML/SVG webview in an astonishing **~2.5 MB** footprint with sub-20ms cold boot!
+
+---
+
+## 📥 Download & Installation
+
+Pre-compiled Android APKs are available on the GitHub Releases page:
+
+* 📱 **Direct Download:** [**app-debug.apk (v1.0)**](https://github.com/juergen874/PocketPy-IDE/releases/download/v1.0/app-debug.apk)
+* 📦 **Release Overview:** [PocketPy IDE v1.0 Release](https://github.com/juergen874/PocketPy-IDE/releases/tag/v1.0)
+* ⚙️ **Compatibility:** Android 7.0+ (API 24+) • Architectures: `arm64-v8a`, `x86_64`
 
 ---
 
