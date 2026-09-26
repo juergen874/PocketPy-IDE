@@ -37,13 +37,13 @@ jobs:
 
       - name: Rename APK
         run: |
-          find app/build/outputs/apk/debug/ -name "*.apk" -exec mv {} app/build/outputs/apk/debug/PocketPy-IDE-1.0.apk \;
+          find app/build/outputs/apk/debug/ -name "*.apk" -exec mv {} app/build/outputs/apk/debug/PocketPy-IDE-1.1.apk \;
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PocketPy-IDE-1.0-apk
-          path: app/build/outputs/apk/debug/PocketPy-IDE-1.0.apk
+          name: PocketPy-IDE-1.1-apk
+          path: app/build/outputs/apk/debug/PocketPy-IDE-1.1.apk
           if-no-files-found: warn
 
       - name: Release APK Asset

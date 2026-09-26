@@ -1,9 +1,10 @@
 # ⚡ PocketPy IDE for Android
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.0-brightgreen.svg" alt="Release v1.0" />
+  <img src="https://img.shields.io/badge/Release-v1.1-brightgreen.svg" alt="Release v1.1" />
   <img src="https://img.shields.io/badge/Platform-Android%207.0%2B%20(API%2024%2B)-blue.svg" alt="Platform" />
   <img src="https://img.shields.io/badge/Engine-PocketPy%20C11-orange.svg" alt="Engine" />
+  <img src="https://img.shields.io/badge/Networking-Native%20TCP%20Sockets-success.svg" alt="Networking" />
   <img src="https://img.shields.io/badge/APK%20Size-~2.5%20MB-success.svg" alt="APK Size" />
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose%20%7C%20Material%203-purple.svg" alt="UI" />
   <img src="https://img.shields.io/badge/Architecture-arm64--v8a%20%7C%20x86__64-informational.svg" alt="Architecture" />
@@ -11,12 +12,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/juergen874/PocketPy-IDE/releases/download/v1.0/PocketPy-IDE-1.0.apk">
-    <img src="https://img.shields.io/badge/Download_APK-v1.0-brightgreen?style=for-the-badge&logo=android" alt="Download APK" />
+  <a href="https://github.com/juergen874/PocketPy-IDE/releases/download/v1.1/PocketPy-IDE-1.1.apk">
+    <img src="https://img.shields.io/badge/Download_APK-v1.1-brightgreen?style=for-the-badge&logo=android" alt="Download APK" />
   </a>
 </p>
 
-**PocketPy IDE** is an ultra-fast, lightweight, and fully offline Python IDE for Android powered by the embeddable **[PocketPy](https://github.com/pocketpy/pocketpy)** C11 engine.
+**PocketPy IDE** is an ultra-fast, lightweight, and fully offline Python IDE for Android powered by the embeddable **[PocketPy](https://github.com/pocketpy/pocketpy)** C11 engine with built-in native TCP sockets.
 
 While traditional Python Android solutions (like Chaquopy or PyTorch Mobile) result in massive **80–120 MB** APK downloads and noticeable interpreter cold starts, **PocketPy IDE** delivers full Python script execution, syntax highlighting, an ANSI terminal, and a visual HTML/SVG webview in an astonishing **~2.5 MB** footprint with sub-20ms cold boot!
 
@@ -26,8 +27,8 @@ While traditional Python Android solutions (like Chaquopy or PyTorch Mobile) res
 
 Pre-compiled Android APKs are available on the GitHub Releases page:
 
-* 📱 **Direct Download:** [**PocketPy-IDE-1.0.apk**](https://github.com/juergen874/PocketPy-IDE/releases/download/v1.0/PocketPy-IDE-1.0.apk)
-* 📦 **Release Overview:** [PocketPy IDE v1.0 Release](https://github.com/juergen874/PocketPy-IDE/releases/tag/v1.0)
+* 📱 **Direct Download:** [**PocketPy-IDE-1.1.apk**](https://github.com/juergen874/PocketPy-IDE/releases/download/v1.1/PocketPy-IDE-1.1.apk)
+* 📦 **Release Overview:** [PocketPy IDE v1.1 Release](https://github.com/juergen874/PocketPy-IDE/releases/tag/v1.1)
 * ⚙️ **Compatibility:** Android 7.0+ (API 24+) • Architectures: `arm64-v8a`, `x86_64`
 
 ---
