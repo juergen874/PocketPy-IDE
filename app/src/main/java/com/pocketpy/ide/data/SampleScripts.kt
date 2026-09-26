@@ -233,20 +233,6 @@ class DeyeReader:
                 self.client = None
             raise e
 
-    def mock_telemetry(self):
-        return {
-            "status_text": "Normal (Demo)", "pv_power_total_w": 4850.0,
-            "pv1_power_w": 2550.0, "pv1_voltage_v": 360.0, "pv1_current_a": 7.1,
-            "pv2_power_w": 2300.0, "pv2_voltage_v": 350.0, "pv2_current_a": 6.6,
-            "battery_soc_percent": 82, "battery_power_w": 1400, "battery_voltage_v": 53.2,
-            "battery_current_a": 26.3, "temp_battery_celsius": 24.0,
-            "grid_power_total_w": -1200, "grid_frequency_hz": 50.0,
-            "load_power_total_w": 2250, "energy_pv_today_kwh": 21.4,
-            "energy_grid_buy_today_kwh": 2.1, "energy_grid_sell_today_kwh": 9.4,
-            "temp_dc_celsius": 38.0, "temp_ac_celsius": 36.5,
-            "logger_serial": self.serial, "mode": "SIMULATION / DEMO"
-        }
-
 def render_terminal_dashboard(data):
     C_RESET = "\\033[0m"
     C_BOLD = "\\033[1m"
@@ -280,13 +266,8 @@ def render_terminal_dashboard(data):
     print(f"{C_BOLD}{C_CYAN}========================================================================{C_RESET}")
 
 reader = DeyeReader("192.168.188.128", 8899, 1109501211)
-try:
-    print("Verbinde zu Deye Inverter (192.168.188.128:8899)...")
-    data = reader.read_telemetry()
-except Exception as e:
-    print(f"Inverter offline ({e}) - Schalte auf Demo-Modus...")
-    data = reader.mock_telemetry()
-
+print("Verbinde zu Deye Inverter (192.168.188.128:8899)...")
+data = reader.read_telemetry()
 render_terminal_dashboard(data)
 """.trimIndent()
     )
