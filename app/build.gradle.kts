@@ -38,13 +38,30 @@ android {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
       val ksFile = file(keystorePath)
+      val customDebugKeystore = file("${rootDir}/debug.keystore")
       if (ksFile.exists() && System.getenv("STORE_PASSWORD") != null) {
         storeFile = ksFile
         storePassword = System.getenv("STORE_PASSWORD")
         keyAlias = "upload"
         keyPassword = System.getenv("KEY_PASSWORD")
       } else {
-        val customDebugKeystore = file("${rootDir}/debug.keystore")
+        if (!customDebugKeystore.exists()) {
+          try {
+            ProcessBuilder(
+              "keytool", "-genkey", "-v",
+              "-keystore", customDebugKeystore.absolutePath,
+              "-alias", "androiddebugkey",
+              "-storepass", "android",
+              "-keypass", "android",
+              "-keyalg", "RSA",
+              "-keysize", "2048",
+              "-validity", "10000",
+              "-dname", "CN=Android Debug,O=Android,C=US"
+            ).inheritIO().start().waitFor()
+          } catch (e: Exception) {
+            // Ignore if keytool is not in PATH
+          }
+        }
         if (customDebugKeystore.exists()) {
           storeFile = customDebugKeystore
           storePassword = "android"
