@@ -1371,7 +1371,22 @@ static bool c_sysinfo_device_manufacturer(int argc, py_StackRef argv) {
     return true;
 }
 
-static bool c_sysinfo_android_sdk(int argc, py_StackRef argv) {
+static bool c_sysinfo_os_name(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
+#ifdef _WIN32
+    py_newstr(py_retval(), "Windows");
+#elif defined(__ANDROID__)
+    py_newstr(py_retval(), "Android");
+#elif defined(__APPLE__)
+    py_newstr(py_retval(), "Darwin");
+#else
+    py_newstr(py_retval(), "Linux");
+#endif
+    return true;
+}
+
+static bool c_sysinfo_api_level(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
 #ifdef _WIN32
     py_newint(py_retval(), 0);
 #else
@@ -1381,10 +1396,12 @@ static bool c_sysinfo_android_sdk(int argc, py_StackRef argv) {
 #endif
     return true;
 }
+#define c_sysinfo_android_sdk c_sysinfo_api_level
 
-static bool c_sysinfo_android_version(int argc, py_StackRef argv) {
+static bool c_sysinfo_os_version(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
 #ifdef _WIN32
-    py_newstr(py_retval(), "Windows");
+    py_newstr(py_retval(), "10/11 x64");
 #else
     char val[32] = "Unknown";
     get_android_prop("ro.build.version.release", val, sizeof(val));
@@ -1392,6 +1409,7 @@ static bool c_sysinfo_android_version(int argc, py_StackRef argv) {
 #endif
     return true;
 }
+#define c_sysinfo_android_version c_sysinfo_os_version
 
 /* ============================================================= */
 /* 4. EXTENDED TIME MODULE (12 functions)                       */
@@ -1586,10 +1604,10 @@ static bool c_time_timezone(int argc, py_StackRef argv) {
 }
 
 /* ============================================================= */
-/* 5. ANDROID NATIVE BRIDGE MODULE (12 functions)               */
+/* 5. DEVICE & HARDWARE MODULE (Cross-Platform)                 */
 /* ============================================================= */
 
-static bool c_android_toast(int argc, py_StackRef argv) {
+static bool c_device_toast(int argc, py_StackRef argv) {
     if (argc < 1) return TypeError("toast(message, [long])");
     const char* msg = py_tostr(py_arg(0));
     bool is_long = argc > 1 ? py_tobool(py_arg(1)) : false;
@@ -1599,7 +1617,7 @@ static bool c_android_toast(int argc, py_StackRef argv) {
     return true;
 }
 
-static bool c_android_vibrate(int argc, py_StackRef argv) {
+static bool c_device_vibrate(int argc, py_StackRef argv) {
     int64_t ms = argc > 0 ? py_toint(py_arg(0)) : 200;
     if (g_android_hooks.vibrate) g_android_hooks.vibrate(ms);
     else printf("[Vibrate] %ld ms\n", (long)ms);
@@ -1607,7 +1625,7 @@ static bool c_android_vibrate(int argc, py_StackRef argv) {
     return true;
 }
 
-static bool c_android_notify(int argc, py_StackRef argv) {
+static bool c_device_notify(int argc, py_StackRef argv) {
     if (argc < 2) return TypeError("notify(title, text, [id])");
     const char* title = py_tostr(py_arg(0));
     const char* text = py_tostr(py_arg(1));
@@ -1618,7 +1636,7 @@ static bool c_android_notify(int argc, py_StackRef argv) {
     return true;
 }
 
-static bool c_android_speak(int argc, py_StackRef argv) {
+static bool c_device_speak(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     const char* text = py_tostr(py_arg(0));
     if (g_android_hooks.speak) g_android_hooks.speak(text);
@@ -1627,7 +1645,7 @@ static bool c_android_speak(int argc, py_StackRef argv) {
     return true;
 }
 
-static bool c_android_get_battery_level(int argc, py_StackRef argv) {
+static bool c_device_get_battery_level(int argc, py_StackRef argv) {
     int level = 100, charging = 0;
     if (g_android_hooks.battery) {
         g_android_hooks.battery(&level, &charging);
@@ -1643,7 +1661,7 @@ static bool c_android_get_battery_level(int argc, py_StackRef argv) {
     return true;
 }
 
-static bool c_android_is_battery_charging(int argc, py_StackRef argv) {
+static bool c_device_is_battery_charging(int argc, py_StackRef argv) {
     int level = 100, charging = 0;
     if (g_android_hooks.battery) {
         g_android_hooks.battery(&level, &charging);
@@ -1659,7 +1677,7 @@ static bool c_android_is_battery_charging(int argc, py_StackRef argv) {
     return true;
 }
 
-static bool c_android_get_battery_status(int argc, py_StackRef argv) {
+static bool c_device_get_battery_status(int argc, py_StackRef argv) {
     int level = 100, charging = 0;
     if (g_android_hooks.battery) {
         g_android_hooks.battery(&level, &charging);
@@ -1682,7 +1700,7 @@ static bool c_android_get_battery_status(int argc, py_StackRef argv) {
 
 static char s_fallback_clip[1024] = "";
 
-static bool c_android_log(int argc, py_StackRef argv) {
+static bool c_device_log(int argc, py_StackRef argv) {
     if (argc < 1) return TypeError("log(msg) or log(tag, msg)");
     const char* tag = argc > 1 ? py_tostr(py_arg(0)) : "PocketPy";
     const char* msg = argc > 1 ? py_tostr(py_arg(1)) : py_tostr(py_arg(0));
@@ -1695,7 +1713,7 @@ static bool c_android_log(int argc, py_StackRef argv) {
     return true;
 }
 
-static bool c_android_copy_to_clipboard(int argc, py_StackRef argv) {
+static bool c_device_copy_to_clipboard(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     const char* text = py_tostr(py_arg(0));
     if (g_android_hooks.clip_set) {
@@ -1707,7 +1725,7 @@ static bool c_android_copy_to_clipboard(int argc, py_StackRef argv) {
     return true;
 }
 
-static bool c_android_get_clipboard(int argc, py_StackRef argv) {
+static bool c_device_get_clipboard(int argc, py_StackRef argv) {
     if (g_android_hooks.clip_get) {
         char* t = g_android_hooks.clip_get();
         py_newstr(py_retval(), t ? t : "");
@@ -1718,12 +1736,12 @@ static bool c_android_get_clipboard(int argc, py_StackRef argv) {
     return true;
 }
 
-static bool c_android_is_screen_on(int argc, py_StackRef argv) {
+static bool c_device_is_screen_on(int argc, py_StackRef argv) {
     py_newbool(py_retval(), true);
     return true;
 }
 
-static bool c_android_beep(int argc, py_StackRef argv) {
+static bool c_device_beep(int argc, py_StackRef argv) {
     int freq = argc > 0 ? (int)py_toint(py_arg(0)) : 1000;
     int duration = argc > 1 ? (int)py_toint(py_arg(1)) : 200;
     if (g_android_hooks.beep) {
@@ -1738,6 +1756,19 @@ static bool c_android_beep(int argc, py_StackRef argv) {
     py_newnone(py_retval());
     return true;
 }
+
+#define c_android_toast c_device_toast
+#define c_android_vibrate c_device_vibrate
+#define c_android_notify c_device_notify
+#define c_android_speak c_device_speak
+#define c_android_get_battery_level c_device_get_battery_level
+#define c_android_is_battery_charging c_device_is_battery_charging
+#define c_android_get_battery_status c_device_get_battery_status
+#define c_android_log c_device_log
+#define c_android_copy_to_clipboard c_device_copy_to_clipboard
+#define c_android_get_clipboard c_device_get_clipboard
+#define c_android_is_screen_on c_device_is_screen_on
+#define c_android_beep c_device_beep
 
 /* ============================================================= */
 /* 6. HASHLIB & CRYPTO MODULE (12 functions)                    */
@@ -2663,10 +2694,15 @@ static void register_all_pocketpy_extensions(void) {
     py_bindfunc(mod_sysinfo, "device", c_sysinfo_device_device);
     py_bindfunc(mod_sysinfo, "device_manufacturer", c_sysinfo_device_manufacturer);
     py_bindfunc(mod_sysinfo, "manufacturer", c_sysinfo_device_manufacturer);
-    py_bindfunc(mod_sysinfo, "android_sdk", c_sysinfo_android_sdk);
-    py_bindfunc(mod_sysinfo, "sdk_int", c_sysinfo_android_sdk);
-    py_bindfunc(mod_sysinfo, "android_version", c_sysinfo_android_version);
-    py_bindfunc(mod_sysinfo, "android_release", c_sysinfo_android_version);
+    py_bindfunc(mod_sysinfo, "os_name", c_sysinfo_os_name);
+    py_bindfunc(mod_sysinfo, "os_version", c_sysinfo_os_version);
+    py_bindfunc(mod_sysinfo, "os_release", c_sysinfo_os_version);
+    py_bindfunc(mod_sysinfo, "api_level", c_sysinfo_api_level);
+    py_bindfunc(mod_sysinfo, "platform_version", c_sysinfo_os_version);
+    py_bindfunc(mod_sysinfo, "android_sdk", c_sysinfo_api_level);
+    py_bindfunc(mod_sysinfo, "sdk_int", c_sysinfo_api_level);
+    py_bindfunc(mod_sysinfo, "android_version", c_sysinfo_os_version);
+    py_bindfunc(mod_sysinfo, "android_release", c_sysinfo_os_version);
     py_bindfunc(mod_sysinfo, "cpu_count", c_os_cpu_count);
 
     /* 4. EXTENDED TIME */
@@ -2684,20 +2720,28 @@ static void register_all_pocketpy_extensions(void) {
     py_bindfunc(mod_time, "strftime", c_time_strftime);
     py_bindfunc(mod_time, "timezone", c_time_timezone);
 
-    /* 5. ANDROID NATIVE BRIDGE */
-    py_GlobalRef mod_android = get_or_create_module("android");
-    py_bindfunc(mod_android, "toast", c_android_toast);
-    py_bindfunc(mod_android, "vibrate", c_android_vibrate);
-    py_bindfunc(mod_android, "notify", c_android_notify);
-    py_bindfunc(mod_android, "speak", c_android_speak);
-    py_bindfunc(mod_android, "get_battery_level", c_android_get_battery_level);
-    py_bindfunc(mod_android, "is_battery_charging", c_android_is_battery_charging);
-    py_bindfunc(mod_android, "get_battery_status", c_android_get_battery_status);
-    py_bindfunc(mod_android, "log", c_android_log);
-    py_bindfunc(mod_android, "copy_to_clipboard", c_android_copy_to_clipboard);
-    py_bindfunc(mod_android, "get_clipboard", c_android_get_clipboard);
-    py_bindfunc(mod_android, "is_screen_on", c_android_is_screen_on);
-    py_bindfunc(mod_android, "beep", c_android_beep);
+    /* 5. DEVICE & HARDWARE MODULE (Cross-platform) */
+    static const char* s_device_mods[] = {"device", "hardware", "android", NULL};
+    for (int i = 0; s_device_mods[i] != NULL; i++) {
+        py_GlobalRef mod_dev = get_or_create_module(s_device_mods[i]);
+        py_bindfunc(mod_dev, "toast", c_device_toast);
+        py_bindfunc(mod_dev, "vibrate", c_device_vibrate);
+        py_bindfunc(mod_dev, "notify", c_device_notify);
+        py_bindfunc(mod_dev, "speak", c_device_speak);
+        py_bindfunc(mod_dev, "get_battery_level", c_device_get_battery_level);
+        py_bindfunc(mod_dev, "battery_level", c_device_get_battery_level);
+        py_bindfunc(mod_dev, "is_battery_charging", c_device_is_battery_charging);
+        py_bindfunc(mod_dev, "is_charging", c_device_is_battery_charging);
+        py_bindfunc(mod_dev, "get_battery_status", c_device_get_battery_status);
+        py_bindfunc(mod_dev, "battery_status", c_device_get_battery_status);
+        py_bindfunc(mod_dev, "log", c_device_log);
+        py_bindfunc(mod_dev, "copy_to_clipboard", c_device_copy_to_clipboard);
+        py_bindfunc(mod_dev, "clipboard_set", c_device_copy_to_clipboard);
+        py_bindfunc(mod_dev, "get_clipboard", c_device_get_clipboard);
+        py_bindfunc(mod_dev, "clipboard_get", c_device_get_clipboard);
+        py_bindfunc(mod_dev, "is_screen_on", c_device_is_screen_on);
+        py_bindfunc(mod_dev, "beep", c_device_beep);
+    }
 
     /* 6. HASHLIB & CRYPTO */
     py_GlobalRef mod_hash = get_or_create_module("hashlib");

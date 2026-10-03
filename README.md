@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Windows%20%7C%20Linux-blue.svg" alt="Platform" />
   <img src="https://img.shields.io/badge/Engine-PocketPy%20C11-orange.svg" alt="Engine" />
   <img src="https://img.shields.io/badge/Functions-160%2B%20Native%20APIs-purple.svg" alt="Functions" />
-  <img src="https://img.shields.io/badge/Tests-129%2F129%20Passing%20(100%25)-success.svg" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-142%2F142%20Passing%20(100%25)-success.svg" alt="Tests" />
   <img src="https://img.shields.io/badge/APK%20Size-2.94%20MB-success.svg" alt="APK Size" />
   <img src="https://img.shields.io/badge/License-MIT-lightgrey.svg" alt="License" />
 </p>
@@ -53,7 +53,7 @@ Pre-compiled, signed binaries and packages are built automatically via CI/CD for
 * **🔌 160+ Native Extensions (100% Cross-Platform):**
   * Sockets, POSIX/Win32 filesystem, low-level file descriptors, hardware telemetry, cryptography, binary packing, SQLite3, and extended math.
 * **🧪 100% Test Coverage:**
-  * Exhaustive automated test suite ([`tests/test_full_suite.py`](tests/test_full_suite.py)) validating all 129 core test assertions across Android, Windows MSVC, and Linux.
+  * Exhaustive automated test suite ([`tests/test_full_suite.py`](tests/test_full_suite.py)) validating all 142 core test assertions across Android, Windows MSVC, and Linux.
 * **✍️ Mobile Code Editor:**
   * Real-time Python syntax highlighting (keywords, built-ins, string literals, numbers, comments).
   * Quick-access programming symbol bar (`:`, `(`, `)`, `[`, `]`, `{`, `}`, `_`, `=`, `"`, `'`, `#`, `tab`).
@@ -73,7 +73,7 @@ Pre-compiled, signed binaries and packages are built automatically via CI/CD for
 | **`os` & `os.path`** | 50+ APIs | Win32 CRT (`_mkdir`, `_rmdir`, `FindFirstFileA`, `_open`, `_pipe`) | Directory & file management, low-level file descriptors (`open`, `read`, `write`, `fsync`), environment variables, and cross-platform path manipulation (`nt` vs `posix`). |
 | **`sysinfo`** | 15 APIs | `GlobalMemoryStatusEx`, `GetTickCount64`, `GetSystemInfo` | RAM total/free/avail, system uptime, processor count, storage capacity, and hardware model inspection. |
 | **`time`** | 12 APIs | `QueryPerformanceCounter`, `GetSystemTimeAsFileTime`, `Sleep` | Monotonic & high-resolution performance counters, timestamps (`time`, `time_ns`), timezone detection, and `localtime`/`gmtime`/`strftime`. |
-| **`android`** | 12 APIs | Win32 Fallbacks (`Beep()`, `GetSystemPowerStatus()`) | Android bridge for Toast, haptic vibration, audible alerts, notifications, TTS speech, clipboard, and battery charging status. |
+| **`device`** / **`hardware`** *(compat: `android`)* | 15 APIs | Win32 Fallbacks (`Beep()`, `GetSystemPowerStatus()`) | Cross-platform hardware control: Battery status/charging, Toast/balloon alerts, haptic feedback, audio beep, notifications, TTS speech, clipboard get/set. |
 | **`hashlib`** | 12 APIs | Pure C11 (portable) | Modbus CRC-16, CRC-32, Adler-32, MD5, SHA-1, SHA-256, hex encoding/decoding, hexdump, XOR byte encryption, and cryptographic random bytes. |
 | **`struct`** | 15 APIs | Pure C11 (portable) | Binary packing and unpacking for signed/unsigned 8-bit, 16-bit, 32-bit integers and 32/64-bit IEEE floats (Big & Little Endian). |
 | **`storage` & `sqlite3`** | 14 APIs | In-memory + persistent | Key-Value dictionary store and embedded SQLite3 SQL engine (`CREATE`, `INSERT`, `SELECT`, parameterized queries). |
@@ -115,7 +115,7 @@ pocketpy script.py arg1 arg2
 ```bash
 pocketpy tests/test_full_suite.py
 # ================================================================
-# TEST RESULTS: 129 PASSED, 0 FAILED (TOTAL: 129)
+# TEST RESULTS: 142 PASSED, 0 FAILED (TOTAL: 142)
 # ALL TESTS PASSED WITH 100% SUCCESS!
 # ================================================================
 ```
@@ -145,7 +145,7 @@ PocketPy IDE comes preloaded with production-ready sample projects:
 3. **`3_interactive_dashboard.html`** — Responsive dark-mode HTML5/SVG status dashboard rendered live inside the Visual WebView.
 4. **`4_deye_reader.py`** — Industrial Modbus TCP telemetry monitor for Deye solar inverters with live register decoding.
 5. **`5_system_and_hardware.py`** — Diagnostic monitor inspecting CPU cores, memory utilization, disk space, and OS properties.
-6. **`6_android_power.py`** — Demonstrates hardware control: Toast messages, haptic feedback, audible beeps, notifications, and TTS speech.
+6. **`6_device_hardware.py`** — Demonstrates cross-platform hardware control: Toast/notifications, haptic feedback, audible beeps, battery status, and TTS speech.
 7. **`7_mini_webserver.py`** — Embedded HTTP server running on port 8080 serving real-time system metrics to external web browsers.
 
 ---
@@ -156,7 +156,7 @@ PocketPy IDE comes preloaded with production-ready sample projects:
 PocketPy-IDE
  ├── CMakeLists.txt              # Top-level CMake (Windows MSVC/MinGW & Linux/macOS)
  ├── tests/
- │    └── test_full_suite.py     # Comprehensive 129-assertion test suite
+ │    └── test_full_suite.py     # Comprehensive 142-assertion test suite
  ├── app/
  │    ├── build.gradle.kts       # Android Gradle build with R8 shrinking
  │    └── src/main/

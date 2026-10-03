@@ -178,13 +178,17 @@ test("sysinfo.device_brand()", sysinfo.device_brand() == sysinfo.brand())
 test("sysinfo.model()", len(sysinfo.model()) > 0)
 test("sysinfo.device_model()", sysinfo.device_model() == sysinfo.model())
 test("sysinfo.device()", len(sysinfo.device()) > 0)
-test("sysinfo.android_version()", len(sysinfo.android_version()) > 0)
-test("sysinfo.android_release() [alias]", sysinfo.android_release() == sysinfo.android_version())
+test("sysinfo.os_name()", len(sysinfo.os_name()) > 0)
+test("sysinfo.os_version()", len(sysinfo.os_version()) > 0)
+test("sysinfo.os_release() [alias]", sysinfo.os_release() == sysinfo.os_version())
+test("sysinfo.api_level()", sysinfo.api_level() >= 0)
+test("sysinfo.android_version() [compat]", len(sysinfo.android_version()) > 0)
+test("sysinfo.android_release() [compat]", sysinfo.android_release() == sysinfo.android_version())
 if os.name == "nt":
-    test("sysinfo.android_sdk()", sysinfo.android_sdk() >= 0)
+    test("sysinfo.android_sdk() [compat]", sysinfo.android_sdk() >= 0)
 else:
-    test("sysinfo.android_sdk()", sysinfo.android_sdk() > 0)
-test("sysinfo.sdk_int() [alias]", sysinfo.sdk_int() == sysinfo.android_sdk())
+    test("sysinfo.android_sdk() [compat]", sysinfo.android_sdk() > 0)
+test("sysinfo.sdk_int() [compat]", sysinfo.sdk_int() == sysinfo.android_sdk())
 test("sysinfo.storage_free()", sysinfo.storage_free() > 0)
 test("sysinfo.storage_total()", sysinfo.storage_total() > 0)
 
@@ -216,32 +220,50 @@ test("time.strftime()", len(time.strftime("%Y-%m-%d")) == 10)
 test("time.timezone()", isinstance(time.timezone(), int))
 
 # ---------------------------------------------------------------------
-# 5. ANDROID NATIVE BRIDGE
+# 5. DEVICE & HARDWARE MODULE (Cross-Platform) & ANDROID ALIAS
 # ---------------------------------------------------------------------
-print("\n--- [5/9] Testing 'android' Bridge Module ---")
+print("\n--- [5/9] Testing 'device' & 'hardware' & 'android' Module ---")
+import device
+import hardware
 import android
 
-bat = android.get_battery_level()
-test("android.get_battery_level()", 0 <= bat <= 100, f"bat={bat}%")
-test("android.is_battery_charging()", isinstance(android.is_battery_charging(), bool))
-test("android.get_battery_status()", isinstance(android.get_battery_status(), dict))
+# Test device module
+bat = device.battery_level()
+test("device.battery_level()", 0 <= bat <= 100, f"bat={bat}%")
+test("device.get_battery_level() [alias]", device.get_battery_level() == bat)
+test("device.is_charging()", isinstance(device.is_charging(), bool))
+test("device.is_battery_charging() [alias]", isinstance(device.is_battery_charging(), bool))
+test("device.battery_status()", isinstance(device.battery_status(), dict))
+test("device.get_battery_status() [alias]", isinstance(device.get_battery_status(), dict))
 
-android.toast("PocketPy Test Suite")
+device.toast("PocketPy Test Suite")
+test("device.toast()", True)
+device.vibrate(50)
+test("device.vibrate()", True)
+device.beep()
+test("device.beep()", True)
+device.notify("PocketPy Test", "Running Exhaustive Tests")
+test("device.notify()", True)
+device.speak("Test")
+test("device.speak()", True)
+
+device.clipboard_set("PocketPySecret123")
+test("device.clipboard_set() & clipboard_get()", device.clipboard_get() == "PocketPySecret123")
+device.copy_to_clipboard("PocketPySecret456")
+test("device.copy_to_clipboard() & get_clipboard()", device.get_clipboard() == "PocketPySecret456")
+test("device.is_screen_on()", isinstance(device.is_screen_on(), bool))
+device.log("Test log from PocketPy")
+test("device.log()", True)
+
+# Test hardware alias
+test("hardware.battery_level()", hardware.battery_level() == bat)
+test("hardware.clipboard_get()", hardware.clipboard_get() == "PocketPySecret456")
+
+# Test android backwards compatibility alias
+test("android.get_battery_level()", android.get_battery_level() == bat)
+test("android.get_clipboard()", android.get_clipboard() == "PocketPySecret456")
+android.toast("Compatibility Test")
 test("android.toast()", True)
-android.vibrate(50)
-test("android.vibrate()", True)
-android.beep()
-test("android.beep()", True)
-android.notify("PocketPy Test", "Running Exhaustive Tests")
-test("android.notify()", True)
-android.speak("Test")
-test("android.speak()", True)
-
-android.copy_to_clipboard("PocketPySecret123")
-test("android.copy_to_clipboard() & get_clipboard()", android.get_clipboard() == "PocketPySecret123")
-test("android.is_screen_on()", isinstance(android.is_screen_on(), bool))
-android.log("Test log from PocketPy")
-test("android.log()", True)
 
 # ---------------------------------------------------------------------
 # 6. HASHLIB & CRYPTO MODULE
