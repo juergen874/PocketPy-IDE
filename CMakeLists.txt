@@ -4,6 +4,7 @@ project(PocketPy LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 
 if(MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES _WINSOCK_DEPRECATED_NO_WARNINGS)
     add_compile_options(/W3 /utf-8 /O2)
 else()
     add_compile_options(-O2 -Wall)

@@ -1,6 +1,16 @@
 #ifndef POCKETPY_EXT_H
 #define POCKETPY_EXT_H
 
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+#ifndef _WINSOCK_DEPRECATED_NO_WARNINGS
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +20,10 @@
 #include <fcntl.h>
 #include <time.h>
 #include <math.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #ifdef _WIN32
   #ifndef WIN32_LEAN_AND_MEAN
