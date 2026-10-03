@@ -12,10 +12,9 @@
 #   public *;
 #}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep PocketPy engine classes and JNI callbacks
+-keep class com.pocketpy.ide.engine.** { *; }
+-keepclassmembers class com.pocketpy.ide.engine.** { *; }
+-keepclasseswithmembernames class * {
+    native <methods>;
+}

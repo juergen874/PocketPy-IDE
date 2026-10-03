@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <android/log.h>
 #include "pocketpy.h"
+#include "pocketpy_ext.h"
 
 #define TAG "PocketPyJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -11,32 +12,160 @@
 
 static JavaVM* g_vm = NULL;
 static jobject g_current_callback = NULL;
+static jobject g_engine_obj = NULL;
 static jmethodID g_mid_on_output = NULL;
 static jmethodID g_mid_on_error = NULL;
 
-static void jni_print_callback(const char* text) {
-    if (!text || !g_vm || !g_current_callback || !g_mid_on_output) return;
+static jmethodID g_mid_toast = NULL;
+static jmethodID g_mid_vibrate = NULL;
+static jmethodID g_mid_notify = NULL;
+static jmethodID g_mid_speak = NULL;
+static jmethodID g_mid_battery_level = NULL;
+static jmethodID g_mid_battery_charging = NULL;
+static jmethodID g_mid_clip_set = NULL;
+static jmethodID g_mid_clip_get = NULL;
+static jmethodID g_mid_beep = NULL;
 
+static JNIEnv* get_jni_env(bool* should_detach) {
+    if (!g_vm) return NULL;
     JNIEnv* env = NULL;
     int env_status = (*g_vm)->GetEnv(g_vm, (void**)&env, JNI_VERSION_1_6);
-    bool should_detach = false;
-
+    *should_detach = false;
     if (env_status == JNI_EDETACHED) {
         if ((*g_vm)->AttachCurrentThread(g_vm, (void**)&env, NULL) != 0) {
-            return;
+            return NULL;
         }
-        should_detach = true;
+        *should_detach = true;
     }
+    return env;
+}
+
+static void release_jni_env(bool should_detach) {
+    if (should_detach && g_vm) {
+        (*g_vm)->DetachCurrentThread(g_vm);
+    }
+}
+
+static void jni_print_callback(const char* text) {
+    if (!text || !g_current_callback || !g_mid_on_output) return;
+    bool detach = false;
+    JNIEnv* env = get_jni_env(&detach);
+    if (!env) return;
 
     jstring jstr = (*env)->NewStringUTF(env, text);
     if (jstr) {
         (*env)->CallVoidMethod(env, g_current_callback, g_mid_on_output, jstr);
         (*env)->DeleteLocalRef(env, jstr);
     }
+    release_jni_env(detach);
+}
 
-    if (should_detach) {
-        (*g_vm)->DetachCurrentThread(g_vm);
+// Android Bridge JNI Implementations
+static void android_bridge_toast(const char* msg, bool is_long) {
+    if (!g_engine_obj || !g_mid_toast || !msg) return;
+    bool detach = false;
+    JNIEnv* env = get_jni_env(&detach);
+    if (!env) return;
+    jstring jstr = (*env)->NewStringUTF(env, msg);
+    if (jstr) {
+        (*env)->CallVoidMethod(env, g_engine_obj, g_mid_toast, jstr, (jboolean)is_long);
+        (*env)->DeleteLocalRef(env, jstr);
     }
+    release_jni_env(detach);
+}
+
+static void android_bridge_vibrate(int64_t ms) {
+    if (!g_engine_obj || !g_mid_vibrate) return;
+    bool detach = false;
+    JNIEnv* env = get_jni_env(&detach);
+    if (!env) return;
+    (*env)->CallVoidMethod(env, g_engine_obj, g_mid_vibrate, (jlong)ms);
+    release_jni_env(detach);
+}
+
+static void android_bridge_notify(const char* title, const char* text, int id) {
+    if (!g_engine_obj || !g_mid_notify) return;
+    bool detach = false;
+    JNIEnv* env = get_jni_env(&detach);
+    if (!env) return;
+    jstring jtitle = (*env)->NewStringUTF(env, title ? title : "");
+    jstring jtext = (*env)->NewStringUTF(env, text ? text : "");
+    if (jtitle && jtext) {
+        (*env)->CallVoidMethod(env, g_engine_obj, g_mid_notify, jtitle, jtext, (jint)id);
+    }
+    if (jtitle) (*env)->DeleteLocalRef(env, jtitle);
+    if (jtext) (*env)->DeleteLocalRef(env, jtext);
+    release_jni_env(detach);
+}
+
+static void android_bridge_speak(const char* text) {
+    if (!g_engine_obj || !g_mid_speak || !text) return;
+    bool detach = false;
+    JNIEnv* env = get_jni_env(&detach);
+    if (!env) return;
+    jstring jstr = (*env)->NewStringUTF(env, text);
+    if (jstr) {
+        (*env)->CallVoidMethod(env, g_engine_obj, g_mid_speak, jstr);
+        (*env)->DeleteLocalRef(env, jstr);
+    }
+    release_jni_env(detach);
+}
+
+static void android_bridge_battery(int* level, int* charging) {
+    if (!g_engine_obj || !g_mid_battery_level || !g_mid_battery_charging) {
+        if (level) *level = 100;
+        if (charging) *charging = 0;
+        return;
+    }
+    bool detach = false;
+    JNIEnv* env = get_jni_env(&detach);
+    if (!env) return;
+    jint lvl = (*env)->CallIntMethod(env, g_engine_obj, g_mid_battery_level);
+    jboolean chg = (*env)->CallBooleanMethod(env, g_engine_obj, g_mid_battery_charging);
+    if (level) *level = (int)lvl;
+    if (charging) *charging = chg ? 1 : 0;
+    release_jni_env(detach);
+}
+
+static void android_bridge_clip_set(const char* text) {
+    if (!g_engine_obj || !g_mid_clip_set || !text) return;
+    bool detach = false;
+    JNIEnv* env = get_jni_env(&detach);
+    if (!env) return;
+    jstring jstr = (*env)->NewStringUTF(env, text);
+    if (jstr) {
+        (*env)->CallVoidMethod(env, g_engine_obj, g_mid_clip_set, jstr);
+        (*env)->DeleteLocalRef(env, jstr);
+    }
+    release_jni_env(detach);
+}
+
+static char* android_bridge_clip_get(void) {
+    if (!g_engine_obj || !g_mid_clip_get) return NULL;
+    bool detach = false;
+    JNIEnv* env = get_jni_env(&detach);
+    if (!env) return NULL;
+    jstring jstr = (jstring)(*env)->CallObjectMethod(env, g_engine_obj, g_mid_clip_get);
+    char* result = NULL;
+    if (jstr) {
+        const char* utf = (*env)->GetStringUTFChars(env, jstr, NULL);
+        if (utf) {
+            result = strdup(utf);
+            (*env)->ReleaseStringUTFChars(env, jstr, utf);
+        }
+        (*env)->DeleteLocalRef(env, jstr);
+    }
+    release_jni_env(detach);
+    return result;
+}
+
+static void android_bridge_beep(int freq, int duration_ms) {
+    if (!g_engine_obj || !g_mid_beep) return;
+    bool detach = false;
+    JNIEnv* env = get_jni_env(&detach);
+    if (!env) return;
+    (*env)->CallVoidMethod(env, g_engine_obj, g_mid_beep, (jint)freq, (jint)duration_ms);
+    release_jni_env(detach);
 }
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
@@ -47,129 +176,6 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
 JNIEXPORT jboolean JNICALL
 Java_com_pocketpy_ide_engine_PocketPyEngine_nativeInit(JNIEnv *env, jobject thiz) {
     return JNI_TRUE;
-}
-
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <fcntl.h>
-#include <errno.h>
-
-static bool c_socket_tcp_client(int argc, py_StackRef argv) {
-    PY_CHECK_ARGC(3);
-    const char* host = py_tostr(py_arg(0));
-    int port = (int)py_toint(py_arg(1));
-    double timeout = py_tofloat(py_arg(2));
-
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) {
-        return OSError("Failed to create socket");
-    }
-
-    struct timeval tv;
-    tv.tv_sec = (time_t)timeout;
-    tv.tv_usec = (suseconds_t)((timeout - tv.tv_sec) * 1000000);
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-
-    struct sockaddr_in serv_addr;
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-    if (inet_pton(AF_INET, host, &serv_addr.sin_addr) <= 0) {
-        struct hostent* he = gethostbyname(host);
-        if (!he) {
-            close(fd);
-            return OSError("Failed to resolve host");
-        }
-        memcpy(&serv_addr.sin_addr, he->h_addr_list[0], he->h_length);
-    }
-
-    if (connect(fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        close(fd);
-        return OSError("Failed to connect to host");
-    }
-
-    py_newint(py_retval(), fd);
-    return true;
-}
-
-static bool c_socket_send(int argc, py_StackRef argv) {
-    PY_CHECK_ARGC(2);
-    int fd = (int)py_toint(py_arg(0));
-    int len = 0;
-    const unsigned char* data = (const unsigned char*)py_tobytes(py_arg(1), &len);
-    if (!data) return TypeError("Expected bytes");
-
-    int sent = send(fd, data, len, 0);
-    if (sent < 0) return OSError("send() failed");
-    py_newint(py_retval(), sent);
-    return true;
-}
-
-static bool c_socket_recv(int argc, py_StackRef argv) {
-    PY_CHECK_ARGC(2);
-    int fd = (int)py_toint(py_arg(0));
-    int maxlen = (int)py_toint(py_arg(1));
-    unsigned char* buf = (unsigned char*)malloc(maxlen);
-    if (!buf) return RuntimeError("Out of memory");
-
-    int n = recv(fd, buf, maxlen, 0);
-    if (n < 0) {
-        free(buf);
-        if (errno == EWOULDBLOCK || errno == EAGAIN) {
-            return TimeoutError("Socket recv timed out");
-        }
-        return OSError("Socket recv failed");
-    }
-
-    unsigned char* dst = py_newbytes(py_retval(), n);
-    memcpy(dst, buf, n);
-    free(buf);
-    return true;
-}
-
-static bool c_socket_close(int argc, py_StackRef argv) {
-    PY_CHECK_ARGC(1);
-    int fd = (int)py_toint(py_arg(0));
-    close(fd);
-    py_newnone(py_retval());
-    return true;
-}
-
-static void register_socket_module(void) {
-    py_GlobalRef mod = py_newmodule("socket");
-    py_bindfunc(mod, "_tcp_client", c_socket_tcp_client);
-    py_bindfunc(mod, "_send", c_socket_send);
-    py_bindfunc(mod, "_recv", c_socket_recv);
-    py_bindfunc(mod, "_close", c_socket_close);
-
-    const char* py_socket_wrapper =
-        "class socket:\n"
-        "    AF_INET = 2\n"
-        "    SOCK_STREAM = 1\n"
-        "    def __init__(self, family=2, type=1):\n"
-        "        self.fd = None\n"
-        "        self._timeout = 4.0\n"
-        "    def settimeout(self, t):\n"
-        "        self._timeout = float(t)\n"
-        "    def connect(self, addr):\n"
-        "        host, port = addr\n"
-        "        self.fd = _tcp_client(str(host), int(port), self._timeout)\n"
-        "    def send(self, data):\n"
-        "        return _send(self.fd, data)\n"
-        "    def sendall(self, data):\n"
-        "        return _send(self.fd, data)\n"
-        "    def recv(self, maxlen=1024):\n"
-        "        return _recv(self.fd, int(maxlen))\n"
-        "    def close(self):\n"
-        "        if self.fd is not None:\n"
-        "            _close(self.fd)\n"
-        "            self.fd = None\n";
-
-    py_exec(py_socket_wrapper, "<socket>", EXEC_MODE, mod);
 }
 
 JNIEXPORT jobject JNICALL
@@ -185,8 +191,32 @@ Java_com_pocketpy_ide_engine_PocketPyEngine_nativeExecute(
     const char* code = (*env)->GetStringUTFChars(env, jcode, NULL);
     const char* filename = jfilename ? (*env)->GetStringUTFChars(env, jfilename, NULL) : "<script>";
 
+    g_engine_obj = (*env)->NewGlobalRef(env, thiz);
+    jclass engineClass = (*env)->GetObjectClass(env, thiz);
+    g_mid_toast = (*env)->GetMethodID(env, engineClass, "showToast", "(Ljava/lang/String;Z)V");
+    g_mid_vibrate = (*env)->GetMethodID(env, engineClass, "vibratePhone", "(J)V");
+    g_mid_notify = (*env)->GetMethodID(env, engineClass, "showNotification", "(Ljava/lang/String;Ljava/lang/String;I)V");
+    g_mid_speak = (*env)->GetMethodID(env, engineClass, "speakText", "(Ljava/lang/String;)V");
+    g_mid_battery_level = (*env)->GetMethodID(env, engineClass, "getBatteryLevel", "()I");
+    g_mid_battery_charging = (*env)->GetMethodID(env, engineClass, "isBatteryCharging", "()Z");
+    g_mid_clip_set = (*env)->GetMethodID(env, engineClass, "copyToClipboard", "(Ljava/lang/String;)V");
+    g_mid_clip_get = (*env)->GetMethodID(env, engineClass, "getClipboard", "()Ljava/lang/String;");
+    g_mid_beep = (*env)->GetMethodID(env, engineClass, "beep", "(II)V");
+
+    AndroidBridgeHooks hooks = {
+        .toast = android_bridge_toast,
+        .vibrate = android_bridge_vibrate,
+        .notify = android_bridge_notify,
+        .speak = android_bridge_speak,
+        .battery = android_bridge_battery,
+        .clip_set = android_bridge_clip_set,
+        .clip_get = android_bridge_clip_get,
+        .beep = android_bridge_beep
+    };
+    set_android_hooks(&hooks);
+
     py_initialize();
-    register_socket_module();
+    register_all_pocketpy_extensions();
 
     if (jcallback) {
         jclass cbClass = (*env)->GetObjectClass(env, jcallback);
@@ -213,6 +243,10 @@ Java_com_pocketpy_ide_engine_PocketPyEngine_nativeExecute(
     if (g_current_callback) {
         (*env)->DeleteGlobalRef(env, g_current_callback);
         g_current_callback = NULL;
+    }
+    if (g_engine_obj) {
+        (*env)->DeleteGlobalRef(env, g_engine_obj);
+        g_engine_obj = NULL;
     }
     py_callbacks()->print = NULL;
 

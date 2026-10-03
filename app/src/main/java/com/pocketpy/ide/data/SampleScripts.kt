@@ -269,6 +269,118 @@ reader = DeyeReader("192.168.188.128", 8899, 1109501211)
 print("Verbinde zu Deye Inverter (192.168.188.128:8899)...")
 data = reader.read_telemetry()
 render_terminal_dashboard(data)
+""".trimIndent(),
+
+        "5_system_and_hardware.py" to """# 📱 Native System & Hardware Inspector
+import sysinfo
+import os
+
+print("=" * 50)
+print("     PocketPy 2.0 System & Hardware Telemetry")
+print("=" * 50)
+
+print(f"Device:       {sysinfo.brand()} {sysinfo.model()} ({sysinfo.device()})")
+print(f"OS Version:   Android {sysinfo.android_release()} (API {sysinfo.sdk_int()})")
+uptime_s = sysinfo.uptime()
+hours = uptime_s // 3600
+mins = (uptime_s % 3600) // 60
+secs = uptime_s % 60
+print(f"Uptime:       {hours}h {mins}m {secs}s")
+print(f"CPU Cores:    {sysinfo.cpu_count()}")
+
+total_mb = sysinfo.ram_total() // (1024 * 1024)
+free_mb = sysinfo.ram_free() // (1024 * 1024)
+avail_mb = sysinfo.ram_avail() // (1024 * 1024)
+used_pct = round((sysinfo.ram_used() / sysinfo.ram_total()) * 100, 1)
+
+print(f"RAM Total:    {total_mb} MB")
+print(f"RAM Avail:    {avail_mb} MB ({used_pct}% used)")
+
+print("\n--- Filesystem POSIX Info ---")
+cwd = os.getcwd()
+print(f"Current Dir:  {cwd}")
+try:
+    files = os.listdir(cwd)
+    print(f"Items in Dir: {len(files)}")
+except Exception as e:
+    print(f"Listdir: {e}")
+
+print("==================================================")
+""".trimIndent(),
+
+        "6_android_power.py" to """# ⚡ Android Hardware Bridge & Notification Demo
+import android
+import time
+
+print("=" * 50)
+print("     Android Native Service & Bridge Demo")
+print("=" * 50)
+
+# 1. Battery Telemetry
+bat_lvl = android.get_battery_level()
+charging = android.is_battery_charging()
+status = android.get_battery_status()
+print(f"Akku: {bat_lvl}% | Wird geladen: {charging} | Status: {status}")
+
+# 2. Native Toast
+print("Zeige Android Toast Nachricht...")
+android.toast("🚀 Hello from PocketPy 2.0!")
+
+# 3. Haptic Feedback (Vibration)
+print("Vibrationsimpuls auslösen...")
+android.vibrate(100)
+
+# 4. Audio Beep (ToneGenerator)
+print("Piepton abspielen...")
+android.beep()
+
+# 5. Status Notification
+print("Sende Android Statusbenachrichtigung...")
+android.notify(
+    "PocketPy Native",
+    f"Akku {bat_lvl}% - Engine läuft mit voller C11 Performance!"
+)
+
+# 6. Text-to-Speech (TTS)
+print("Sprachausgabe (TTS)...")
+android.speak("Pocket Python Version zwei Punkt null ist bereit.")
+
+print("Erfolgreich abgeschlossen!")
+""".trimIndent(),
+
+        "7_mini_webserver.py" to """# 🌐 PocketPy Micro HTTP Web Server
+# Serves live hardware telemetry over HTTP on port 8080!
+import socket
+import sysinfo
+
+HOST = "0.0.0.0"
+PORT = 8080
+
+srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+srv.bind((HOST, PORT))
+srv.listen(1)
+
+print("=" * 55)
+print(f"  PocketPy MicroServer läuft auf http://127.0.0.1:{PORT}")
+print("  Öffne diese URL im Browser oder sende eine Anfrage.")
+print("=" * 55)
+
+# Wait for 1 client request
+client, addr = srv.accept()
+print(f"Anfrage von: {addr[0]}:{addr[1]}")
+req = client.recv(1024)
+
+total_mb = sysinfo.ram_total() // (1024 * 1024)
+avail_mb = sysinfo.ram_avail() // (1024 * 1024)
+
+html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>PocketPy MicroServer</title><style>body { background: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 30px; text-align: center; } .card { background: #1e293b; border-radius: 12px; padding: 24px; max-width: 450px; margin: 0 auto; box-shadow: 0 4px 16px rgba(0,0,0,0.5); } h1 { color: #38bdf8; margin-bottom: 8px; } .stat { text-align: left; padding: 8px 12px; margin: 8px 0; background: #334155; border-radius: 6px; }</style></head><body><div class='card'><h1>🚀 PocketPy 2.0 MicroServer</h1><p>Reiner C11 Socket Server auf Android!</p><div class='stat'><b>Gerät:</b> " + sysinfo.brand() + " " + sysinfo.model() + "</div><div class='stat'><b>OS:</b> Android " + str(sysinfo.android_release()) + " (API " + str(sysinfo.sdk_int()) + ")</div><div class='stat'><b>RAM:</b> " + str(avail_mb) + " MB frei / " + str(total_mb) + " MB</div><div class='stat'><b>Uptime:</b> " + str(sysinfo.uptime()) + " Sekunden</div></div></body></html>"
+
+response = "HTTP/1.1 200 OK\\r\\nContent-Type: text/html; charset=utf-8\\r\\nContent-Length: " + str(len(html)) + "\\r\\nConnection: close\\r\\n\\r\\n" + html
+client.send(response)
+client.close()
+srv.close()
+print("Antwort gesendet und Server sauber geschlossen!")
 """.trimIndent()
     )
 }
