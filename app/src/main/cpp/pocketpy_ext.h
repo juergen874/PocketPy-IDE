@@ -36,6 +36,7 @@
   #include <direct.h>
   #include <process.h>
   #include <wincrypt.h>
+  #include <tlhelp32.h>
   #include <sys/types.h>
   #include <sys/stat.h>
   #pragma comment(lib, "ws2_32.lib")
@@ -762,7 +763,23 @@ static bool c_os_getpid(int argc, py_StackRef argv) {
 static bool c_os_getppid(int argc, py_StackRef argv) {
     (void)argc; (void)argv;
 #ifdef _WIN32
-    py_newint(py_retval(), 0);
+    DWORD ppid = 0;
+    DWORD pid = GetCurrentProcessId();
+    HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (h != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32 pe;
+        pe.dwSize = sizeof(PROCESSENTRY32);
+        if (Process32First(h, &pe)) {
+            do {
+                if (pe.th32ProcessID == pid) {
+                    ppid = pe.th32ParentProcessID;
+                    break;
+                }
+            } while (Process32Next(h, &pe));
+        }
+        CloseHandle(h);
+    }
+    py_newint(py_retval(), (int64_t)ppid);
 #else
     py_newint(py_retval(), getppid());
 #endif
@@ -2500,9 +2517,9 @@ static void register_all_pocketpy_extensions(void) {
         "        if '\\\\' not in p:\n"
         "            if len(p) >= 2 and p[1] == ':': return p, ''\n"
         "            return '', p\n"
-        "        idx = p.rfind('\\\\')\n"
-        "        head = p[:idx]\n"
-        "        tail = p[idx+1:]\n"
+        "        parts = p.split('\\\\')\n"
+        "        head = '\\\\'.join(parts[:-1])\n"
+        "        tail = parts[-1]\n"
         "        if not head and p.startswith('\\\\'): head = '\\\\'\n"
         "        return head, tail\n"
         "    def basename(self, p): return self.split(p)[1]\n"
@@ -2510,8 +2527,10 @@ static void register_all_pocketpy_extensions(void) {
         "    def splitext(self, p):\n"
         "        b = self.basename(p)\n"
         "        if '.' not in b: return p, ''\n"
-        "        idx = p.rfind('.')\n"
-        "        return p[:idx], p[idx:]\n"
+        "        parts = p.split('.')\n"
+        "        ext = '.' + parts[-1]\n"
+        "        root = '.'.join(parts[:-1])\n"
+        "        return root, ext\n"
         "    def exists(self, p):\n"
         "        try: stat(p); return True\n"
         "        except: return False\n"

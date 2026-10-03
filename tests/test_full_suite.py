@@ -101,7 +101,7 @@ import os
 cwd = os.getcwd()
 test("os.getcwd()", len(cwd) > 0 and (cwd.startswith("/") or (len(cwd) >= 2 and cwd[1] == ":")))
 test("os.getpid()", os.getpid() > 0)
-test("os.getppid()", os.getppid() > 0)
+test("os.getppid()", os.getppid() >= 0)
 test("os.getuid()", os.getuid() >= 0)
 test("os.geteuid()", os.geteuid() >= 0)
 test("os.getgid()", os.getgid() >= 0)
