@@ -1105,10 +1105,12 @@ static bool c_android_get_battery_status(int argc, py_StackRef argv) {
     return true;
 }
 
+static char s_fallback_clip[1024] = "";
+
 static bool c_android_log(int argc, py_StackRef argv) {
-    if (argc < 2) return TypeError("log(tag, msg, [level])");
-    const char* tag = py_tostr(py_arg(0));
-    const char* msg = py_tostr(py_arg(1));
+    if (argc < 1) return TypeError("log(msg) or log(tag, msg)");
+    const char* tag = argc > 1 ? py_tostr(py_arg(0)) : "PocketPy";
+    const char* msg = argc > 1 ? py_tostr(py_arg(1)) : py_tostr(py_arg(0));
 #if defined(__ANDROID__) && !defined(STANDALONE_CLI)
     __android_log_print(ANDROID_LOG_INFO, tag, "%s", msg);
 #else
@@ -1121,7 +1123,11 @@ static bool c_android_log(int argc, py_StackRef argv) {
 static bool c_android_copy_to_clipboard(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     const char* text = py_tostr(py_arg(0));
-    if (g_android_hooks.clip_set) g_android_hooks.clip_set(text);
+    if (g_android_hooks.clip_set) {
+        g_android_hooks.clip_set(text);
+    } else {
+        snprintf(s_fallback_clip, sizeof(s_fallback_clip), "%s", text);
+    }
     py_newnone(py_retval());
     return true;
 }
@@ -1132,7 +1138,7 @@ static bool c_android_get_clipboard(int argc, py_StackRef argv) {
         py_newstr(py_retval(), t ? t : "");
         if (t) free(t);
     } else {
-        py_newstr(py_retval(), "");
+        py_newstr(py_retval(), s_fallback_clip);
     }
     return true;
 }
@@ -1362,8 +1368,60 @@ static bool c_hash_sha256(int argc, py_StackRef argv) {
 }
 
 static bool c_hash_sha1(int argc, py_StackRef argv) {
-    /* Fast dummy/fallback sha1 */
-    return c_hash_sha256(argc, argv);
+    PY_CHECK_ARGC(1);
+    int in_len = 0;
+    const unsigned char* input = get_bytes_or_str(py_arg(0), &in_len);
+    if (!input) return TypeError("Expected bytes or str");
+
+    uint32_t h[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
+    uint64_t total_bits = (uint64_t)in_len * 8;
+    size_t padded_len = ((in_len + 8) / 64 + 1) * 64;
+    unsigned char* msg = (unsigned char*)calloc(padded_len, 1);
+    if (!msg) return RuntimeError("Out of memory");
+    memcpy(msg, input, in_len);
+    msg[in_len] = 0x80;
+    for (int i = 0; i < 8; i++) msg[padded_len - 1 - i] = (unsigned char)((total_bits >> (i * 8)) & 0xFF);
+
+    for (size_t offset = 0; offset < padded_len; offset += 64) {
+        uint32_t w[80];
+        for (int i = 0; i < 16; i++) {
+            w[i] = ((uint32_t)msg[offset + i*4] << 24) | ((uint32_t)msg[offset + i*4 + 1] << 16) |
+                   ((uint32_t)msg[offset + i*4 + 2] << 8) | ((uint32_t)msg[offset + i*4 + 3]);
+        }
+        for (int i = 16; i < 80; i++) {
+            uint32_t temp = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+            w[i] = (temp << 1) | (temp >> 31);
+        }
+        uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
+        for (int i = 0; i < 80; i++) {
+            uint32_t f, k;
+            if (i < 20) {
+                f = (b & c) | ((~b) & d);
+                k = 0x5A827999;
+            } else if (i < 40) {
+                f = b ^ c ^ d;
+                k = 0x6ED9EBA1;
+            } else if (i < 60) {
+                f = (b & c) | (b & d) | (c & d);
+                k = 0x8F1BBCDC;
+            } else {
+                f = b ^ c ^ d;
+                k = 0xCA62C1D6;
+            }
+            uint32_t temp = ((a << 5) | (a >> 27)) + f + e + k + w[i];
+            e = d;
+            d = c;
+            c = (b << 30) | (b >> 2);
+            b = a;
+            a = temp;
+        }
+        h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e;
+    }
+    free(msg);
+    char hex[41];
+    for (int i = 0; i < 5; i++) sprintf(hex + i * 8, "%08x", h[i]);
+    py_newstr(py_retval(), hex);
+    return true;
 }
 
 static bool c_hash_bytes_to_hex(int argc, py_StackRef argv) {
@@ -1614,8 +1672,8 @@ static bool c_storage_has(int argc, py_StackRef argv) {
 }
 
 static bool c_storage_clear(int argc, py_StackRef argv) {
-    py_GlobalRef kv = py_getglobal(py_name("_STORAGE_KV"));
-    if (kv) py_cleardict(kv);
+    py_newdict(py_r0());
+    py_setglobal(py_name("_STORAGE_KV"), py_r0());
     py_newnone(py_retval());
     return true;
 }
@@ -1860,15 +1918,20 @@ static void register_all_pocketpy_extensions(void) {
         "        return '/'.join([p.rstrip('/') for p in parts if p]).replace('//', '/')\n"
         "    def split(self, p):\n"
         "        if '/' not in p: return '', p\n"
-        "        idx = p.rfind('/')\n"
-        "        return p[:idx], p[idx+1:]\n"
+        "        parts = p.split('/')\n"
+        "        head = '/'.join(parts[:-1])\n"
+        "        tail = parts[-1]\n"
+        "        if p.startswith('/') and not head: head = '/'\n"
+        "        return head, tail\n"
         "    def basename(self, p): return self.split(p)[1]\n"
         "    def dirname(self, p): return self.split(p)[0]\n"
         "    def splitext(self, p):\n"
         "        b = self.basename(p)\n"
         "        if '.' not in b: return p, ''\n"
-        "        idx = p.rfind('.')\n"
-        "        return p[:idx], p[idx:]\n"
+        "        parts = p.split('.')\n"
+        "        ext = '.' + parts[-1]\n"
+        "        root = '.'.join(parts[:-1])\n"
+        "        return root, ext\n"
         "    def exists(self, p):\n"
         "        try: stat(p); return True\n"
         "        except: return False\n"
