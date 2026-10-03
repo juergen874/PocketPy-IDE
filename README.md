@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Release-v2.0-brightgreen.svg" alt="Release v2.0" />
-  <img src="https://img.shields.io/badge/Platform-Android%207.0%2B%20(API%2024%2B)-blue.svg" alt="Platform" />
+  <img src="https://img.shields.io/badge/Platform-Android%20%7C%20Windows%20%7C%20Linux-blue.svg" alt="Platform" />
   <img src="https://img.shields.io/badge/Engine-PocketPy%20C11-orange.svg" alt="Engine" />
   <img src="https://img.shields.io/badge/Functions-160%2B%20Native%20APIs-purple.svg" alt="Functions" />
   <img src="https://img.shields.io/badge/Networking-Sockets%20%7C%20Webserver-success.svg" alt="Networking" />
@@ -16,21 +16,24 @@
   <a href="https://github.com/juergen874/PocketPy-IDE/releases/download/v2.0/PocketPy-IDE-2.0.apk">
     <img src="https://img.shields.io/badge/Download_APK-v2.0-brightgreen?style=for-the-badge&logo=android" alt="Download APK" />
   </a>
+  <a href="https://github.com/juergen874/PocketPy-IDE/releases/download/v2.0/pocketpy-windows-x64.zip">
+    <img src="https://img.shields.io/badge/Download_Windows-x64-blue?style=for-the-badge&logo=windows" alt="Download Windows Binary" />
+  </a>
 </p>
 
-**PocketPy IDE** is an ultra-fast, lightweight, and fully offline Python IDE for Android powered by the embeddable **[PocketPy](https://github.com/pocketpy/pocketpy)** C11 engine with **over 160+ native system, network, crypto, and hardware extensions**.
+**PocketPy IDE** is an ultra-fast, lightweight, cross-platform Python environment and Android IDE powered by the embeddable **[PocketPy](https://github.com/pocketpy/pocketpy)** C11 engine with **over 160+ native system, network, crypto, and hardware extensions**. Everything runs identically on Android, Windows, and Linux.
 
-While traditional Python Android runtimes (like Chaquopy or Termux CPython) result in massive **80–120 MB** downloads and sluggish interpreter startup, **PocketPy IDE 2.0** provides full Python script execution, syntax highlighting, an ANSI terminal, live HTML/SVG preview, and comprehensive Android system access in an astonishing **2.93 MB APK footprint with sub-20ms instant boot**.
+While traditional Python Android runtimes (like Chaquopy or Termux CPython) result in massive **80–120 MB** downloads and sluggish interpreter startup, **PocketPy IDE 2.0** provides full Python script execution, syntax highlighting, an ANSI terminal, live HTML/SVG preview, and comprehensive system access in an astonishing **2.93 MB APK footprint with sub-20ms instant boot**.
 
 ---
 
 ## 📥 Download & Installation
 
-Pre-compiled signed Android APKs are available directly via GitHub Releases:
+Pre-compiled signed releases are available directly via GitHub Releases:
 
-* 📱 **Direct Download:** [**PocketPy-IDE-2.0.apk** (2.93 MB)](https://github.com/juergen874/PocketPy-IDE/releases/download/v2.0/PocketPy-IDE-2.0.apk)
+* 📱 **Android APK:** [**PocketPy-IDE-2.0.apk** (2.93 MB)](https://github.com/juergen874/PocketPy-IDE/releases/download/v2.0/PocketPy-IDE-2.0.apk) — Android 7.0+ (API 24+) • `arm64-v8a`, `x86_64`
+* 🪟 **Windows x64 Executable:** [**pocketpy-windows-x64.zip**](https://github.com/juergen874/PocketPy-IDE/releases/download/v2.0/pocketpy-windows-x64.zip) — Standalone `pocketpy.exe` CLI runner with full Winsock2 and Win32 support
 * 📦 **Release Overview:** [PocketPy IDE v2.0 Release](https://github.com/juergen874/PocketPy-IDE/releases/tag/v2.0)
-* ⚙️ **Compatibility:** Android 7.0+ (API 24+) • Architectures: `arm64-v8a`, `x86_64`
 
 ---
 
@@ -125,14 +128,9 @@ PocketPy IDE
 
 ## 🏗️ Building from Source
 
-### Prerequisites
-- Android Studio Ladybug or newer
-- Android SDK (API 36 / Android 16)
-- Android NDK (Version 25+)
-- CMake 3.22.1+
-- Java JDK 17
+### 1. Android APK
+**Prerequisites:** Android SDK (API 36), Android NDK 25+, CMake 3.22.1+, JDK 17.
 
-### Build Commands
 ```bash
 git clone https://github.com/juergen874/PocketPy-IDE.git
 cd PocketPy-IDE
@@ -143,10 +141,32 @@ chmod +x gradlew
 # Build Optimized Release APK (with R8 tree-shaking & resource shrinking)
 ./gradlew assembleRelease
 ```
+The compiled APK will be at `app/build/outputs/apk/release/PocketPy-IDE-2.0.apk`.
 
-The compiled APK will be located at:
+### 2. Windows Executable (`pocketpy.exe`)
+**Prerequisites:** Visual Studio 2022 (MSVC) or MinGW with GCC/Clang, CMake 3.20+.
+
+```powershell
+git clone https://github.com/juergen874/PocketPy-IDE.git
+cd PocketPy-IDE
+
+# Configure with CMake
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+# Build PocketPy executable
+cmake --build build --config Release
+
+# Run REPL or scripts
+.\build\Release\pocketpy.exe
+.\build\Release\pocketpy.exe tests\test_full_suite.py
+.\build\Release\pocketpy.exe script.py
 ```
-app/build/outputs/apk/release/PocketPy-IDE-2.0.apk
+
+### 3. Linux / macOS Executable (`pocketpy`)
+```bash
+cmake -B build -S .
+cmake --build build
+./build/pocketpy tests/test_full_suite.py
 ```
 
 ---

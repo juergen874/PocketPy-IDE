@@ -15,3 +15,8 @@
 my-upload-key.jks
 debug.keystore
 .env
+pocketpy
+pocketpy.exe
+/build/
+/dist/
+*.zip

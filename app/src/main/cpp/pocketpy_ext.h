@@ -6,34 +6,80 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <time.h>
 #include <math.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <sys/statvfs.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/utsname.h>
 
-#if defined(__ANDROID__) || defined(__ANDROID_API__)
-#include <sys/system_properties.h>
-#include <android/log.h>
-#define HAS_ANDROID_PROPS 1
-#else
-#define HAS_ANDROID_PROPS 0
-#endif
+#ifdef _WIN32
+  #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <windows.h>
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+  #include <io.h>
+  #include <direct.h>
+  #include <process.h>
+  #include <wincrypt.h>
+  #include <sys/types.h>
+  #include <sys/stat.h>
+  #pragma comment(lib, "ws2_32.lib")
+  #pragma comment(lib, "advapi32.lib")
 
-#if defined(__linux__)
-#include <sys/sysinfo.h>
-#define HAS_SYSINFO 1
+  #ifndef _SSIZE_T_DEFINED
+    typedef intptr_t ssize_t;
+    #define _SSIZE_T_DEFINED
+  #endif
+  #ifndef mode_t
+    typedef int mode_t;
+  #endif
+  #ifndef S_ISDIR
+    #define S_ISDIR(mode) (((mode) & _S_IFMT) == _S_IFDIR)
+  #endif
+  #ifndef S_ISREG
+    #define S_ISREG(mode) (((mode) & _S_IFMT) == _S_IFREG)
+  #endif
+
+  #define CLOSE_SOCKET(s) closesocket(s)
+  #define CLOSE_FD(fd) _close(fd)
+  typedef int socklen_compat;
+  #define HAS_ANDROID_PROPS 0
+  #define HAS_SYSINFO 0
+  #define IS_WINDOWS 1
 #else
-#define HAS_SYSINFO 0
+  #include <unistd.h>
+  #include <dirent.h>
+  #include <sys/stat.h>
+  #include <sys/statvfs.h>
+  #include <sys/types.h>
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <arpa/inet.h>
+  #include <netdb.h>
+  #include <sys/utsname.h>
+
+  #define CLOSE_SOCKET(s) close(s)
+  #define CLOSE_FD(fd) close(fd)
+  typedef socklen_t socklen_compat;
+  typedef int SOCKET;
+  #define INVALID_SOCKET (-1)
+  #define IS_WINDOWS 0
+
+  #if defined(__ANDROID__) || defined(__ANDROID_API__)
+    #include <sys/system_properties.h>
+    #include <android/log.h>
+    #define HAS_ANDROID_PROPS 1
+  #else
+    #define HAS_ANDROID_PROPS 0
+  #endif
+
+  #if defined(__linux__)
+    #include <sys/sysinfo.h>
+    #define HAS_SYSINFO 1
+  #else
+    #define HAS_SYSINFO 0
+  #endif
 #endif
 
 #include "pocketpy.h"
@@ -95,20 +141,56 @@ static inline const unsigned char* get_bytes_or_str(py_Ref self, int* size) {
 /* 1. SOCKET MODULE (20 functions / methods)                    */
 /* ============================================================= */
 
-static bool c_socket_tcp_client(int argc, py_StackRef argv) {
-    PY_CHECK_ARGC(3);
-    const char* host = py_tostr(py_arg(0));
-    int port = (int)py_toint(py_arg(1));
-    double timeout = to_number(py_arg(2));
+static inline void init_platform_networking(void) {
+#ifdef _WIN32
+    static bool wsa_init = false;
+    if (!wsa_init) {
+        WSADATA wsa;
+        WSAStartup(MAKEWORD(2, 2), &wsa);
+        wsa_init = true;
+    }
+#endif
+}
 
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) return OSError("Failed to create TCP socket");
-
+static inline void set_sock_timeout(int fd, double timeout) {
+#ifdef _WIN32
+    DWORD ms = (DWORD)(timeout * 1000.0);
+    setsockopt((SOCKET)fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&ms, sizeof(ms));
+    setsockopt((SOCKET)fd, SOL_SOCKET, SO_SNDTIMEO, (const char*)&ms, sizeof(ms));
+#else
     struct timeval tv;
     tv.tv_sec = (time_t)timeout;
     tv.tv_usec = (suseconds_t)((timeout - tv.tv_sec) * 1000000);
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+#endif
+}
+
+static inline bool is_sock_timeout_err(void) {
+#ifdef _WIN32
+    int err = WSAGetLastError();
+    return err == WSAETIMEDOUT || err == WSAEWOULDBLOCK;
+#else
+    return errno == EWOULDBLOCK || errno == EAGAIN;
+#endif
+}
+
+static bool c_socket_tcp_client(int argc, py_StackRef argv) {
+    PY_CHECK_ARGC(3);
+    init_platform_networking();
+    const char* host = py_tostr(py_arg(0));
+    int port = (int)py_toint(py_arg(1));
+    double timeout = to_number(py_arg(2));
+
+#ifdef _WIN32
+    SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == INVALID_SOCKET) return OSError("Failed to create TCP socket");
+#else
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return OSError("Failed to create TCP socket");
+#endif
+
+    set_sock_timeout((int)fd, timeout);
 
     struct sockaddr_in serv_addr;
     memset(&serv_addr, 0, sizeof(serv_addr));
@@ -116,31 +198,38 @@ static bool c_socket_tcp_client(int argc, py_StackRef argv) {
     serv_addr.sin_port = htons(port);
     if (inet_pton(AF_INET, host, &serv_addr.sin_addr) <= 0) {
         struct hostent* he = gethostbyname(host);
-        if (!he) { close(fd); return OSError("Failed to resolve host"); }
+        if (!he) { CLOSE_SOCKET(fd); return OSError("Failed to resolve host"); }
         memcpy(&serv_addr.sin_addr, he->h_addr_list[0], he->h_length);
     }
 
     if (connect(fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        close(fd);
-        return OSError("connect() failed: %s", strerror(errno));
+        CLOSE_SOCKET(fd);
+        return OSError("connect() failed");
     }
-    py_newint(py_retval(), fd);
+    py_newint(py_retval(), (int64_t)fd);
     return true;
 }
 
 static bool c_socket_tcp_server(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(3);
+    init_platform_networking();
     const char* host = py_tostr(py_arg(0));
     int port = (int)py_toint(py_arg(1));
     int backlog = (int)py_toint(py_arg(2));
 
+#ifdef _WIN32
+    SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == INVALID_SOCKET) return OSError("Failed to create server socket");
+    int opt = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+#else
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return OSError("Failed to create server socket");
-
     int opt = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 #ifdef SO_REUSEPORT
     setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+#endif
 #endif
 
     struct sockaddr_in serv_addr;
@@ -154,14 +243,14 @@ static bool c_socket_tcp_server(int argc, py_StackRef argv) {
     }
 
     if (bind(fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
-        close(fd);
-        return OSError("bind() failed: %s", strerror(errno));
+        CLOSE_SOCKET(fd);
+        return OSError("bind() failed");
     }
     if (listen(fd, backlog > 0 ? backlog : 5) < 0) {
-        close(fd);
+        CLOSE_SOCKET(fd);
         return OSError("listen() failed");
     }
-    py_newint(py_retval(), fd);
+    py_newint(py_retval(), (int64_t)fd);
     return true;
 }
 
@@ -169,19 +258,27 @@ static bool c_socket_accept(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     int fd = (int)py_toint(py_arg(0));
     struct sockaddr_in client_addr;
-    socklen_t client_len = sizeof(client_addr);
+    socklen_compat client_len = sizeof(client_addr);
+#ifdef _WIN32
+    SOCKET client_fd = accept((SOCKET)fd, (struct sockaddr*)&client_addr, &client_len);
+    if (client_fd == INVALID_SOCKET) {
+        if (is_sock_timeout_err()) return TimeoutError("Socket accept timed out");
+        return OSError("accept() failed");
+    }
+#else
     int client_fd = accept(fd, (struct sockaddr*)&client_addr, &client_len);
     if (client_fd < 0) {
-        if (errno == EWOULDBLOCK || errno == EAGAIN) return TimeoutError("Socket accept timed out");
+        if (is_sock_timeout_err()) return TimeoutError("Socket accept timed out");
         return OSError("accept() failed: %s", strerror(errno));
     }
+#endif
 
     char ip_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, sizeof(ip_str));
     int port = ntohs(client_addr.sin_port);
 
     py_newtuple(py_retval(), 3);
-    py_newint(py_r0(), client_fd);
+    py_newint(py_r0(), (int64_t)client_fd);
     py_tuple_setitem(py_retval(), 0, py_r0());
     py_newstr(py_r0(), ip_str);
     py_tuple_setitem(py_retval(), 1, py_r0());
@@ -198,11 +295,16 @@ static bool c_socket_send(int argc, py_StackRef argv) {
     if (!data) return TypeError("Expected bytes or str");
     int total = 0;
     while (total < len) {
+#ifdef _WIN32
+        int sent = send((SOCKET)fd, (const char*)data + total, len - total, 0);
+        if (sent < 0) return OSError("send() failed");
+#else
         int sent = send(fd, data + total, len - total, 0);
         if (sent < 0) {
             if (errno == EINTR) continue;
             return OSError("send() failed: %s", strerror(errno));
         }
+#endif
         total += sent;
     }
     py_newint(py_retval(), total);
@@ -215,11 +317,15 @@ static bool c_socket_recv(int argc, py_StackRef argv) {
     int maxlen = (int)py_toint(py_arg(1));
     unsigned char* buf = (unsigned char*)malloc(maxlen);
     if (!buf) return RuntimeError("Out of memory");
+#ifdef _WIN32
+    int n = recv((SOCKET)fd, (char*)buf, maxlen, 0);
+#else
     int n = recv(fd, buf, maxlen, 0);
+#endif
     if (n < 0) {
         free(buf);
-        if (errno == EWOULDBLOCK || errno == EAGAIN) return TimeoutError("Socket timed out");
-        return OSError("recv() failed: %s", strerror(errno));
+        if (is_sock_timeout_err()) return TimeoutError("Socket timed out");
+        return OSError("recv() failed");
     }
     unsigned char* dst = py_newbytes(py_retval(), n);
     memcpy(dst, buf, n);
@@ -228,9 +334,16 @@ static bool c_socket_recv(int argc, py_StackRef argv) {
 }
 
 static bool c_socket_udp_socket(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
+    init_platform_networking();
+#ifdef _WIN32
+    SOCKET fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd == INVALID_SOCKET) return OSError("Failed to create UDP socket");
+#else
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) return OSError("Failed to create UDP socket");
-    py_newint(py_retval(), fd);
+#endif
+    py_newint(py_retval(), (int64_t)fd);
     return true;
 }
 
@@ -249,7 +362,11 @@ static bool c_socket_sendto(int argc, py_StackRef argv) {
     serv_addr.sin_port = htons(port);
     inet_pton(AF_INET, host, &serv_addr.sin_addr);
 
+#ifdef _WIN32
+    int sent = sendto((SOCKET)fd, (const char*)data, len, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+#else
     int sent = sendto(fd, data, len, 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+#endif
     if (sent < 0) return OSError("sendto() failed");
     py_newint(py_retval(), sent);
     return true;
@@ -263,8 +380,12 @@ static bool c_socket_recvfrom(int argc, py_StackRef argv) {
     if (!buf) return RuntimeError("Out of memory");
 
     struct sockaddr_in src_addr;
-    socklen_t addr_len = sizeof(src_addr);
-    int n = recvfrom(fd, buf, maxlen, 0, (struct sockaddr*)&src_addr, &addr_len);
+    socklen_compat addr_len = sizeof(src_addr);
+#ifdef _WIN32
+    int n = recvfrom((SOCKET)fd, (char*)buf, maxlen, 0, (struct sockaddr*)&src_addr, &addr_len);
+#else
+    int n = recvfrom(fd, (char*)buf, maxlen, 0, (struct sockaddr*)&src_addr, &addr_len);
+#endif
     if (n < 0) {
         free(buf);
         return OSError("recvfrom() failed");
@@ -288,7 +409,7 @@ static bool c_socket_recvfrom(int argc, py_StackRef argv) {
 static bool c_socket_close(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     int fd = (int)py_toint(py_arg(0));
-    close(fd);
+    CLOSE_SOCKET(fd);
     py_newnone(py_retval());
     return true;
 }
@@ -297,11 +418,7 @@ static bool c_socket_settimeout(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(2);
     int fd = (int)py_toint(py_arg(0));
     double timeout = to_number(py_arg(1));
-    struct timeval tv;
-    tv.tv_sec = (time_t)timeout;
-    tv.tv_usec = (suseconds_t)((timeout - tv.tv_sec) * 1000000);
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    set_sock_timeout(fd, timeout);
     py_newnone(py_retval());
     return true;
 }
@@ -312,7 +429,11 @@ static bool c_socket_setsockopt(int argc, py_StackRef argv) {
     int level = (int)py_toint(py_arg(1));
     int optname = (int)py_toint(py_arg(2));
     int optval = (int)py_toint(py_arg(3));
+#ifdef _WIN32
+    setsockopt((SOCKET)fd, level, optname, (const char*)&optval, sizeof(optval));
+#else
     setsockopt(fd, level, optname, &optval, sizeof(optval));
+#endif
     py_newnone(py_retval());
     return true;
 }
@@ -339,8 +460,12 @@ static bool c_socket_getsockname(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     int fd = (int)py_toint(py_arg(0));
     struct sockaddr_in sin;
-    socklen_t len = sizeof(sin);
+    socklen_compat len = sizeof(sin);
+#ifdef _WIN32
+    if (getsockname((SOCKET)fd, (struct sockaddr*)&sin, &len) != 0) return OSError("getsockname failed");
+#else
     if (getsockname(fd, (struct sockaddr*)&sin, &len) < 0) return OSError("getsockname failed");
+#endif
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &sin.sin_addr, ip, sizeof(ip));
     py_newtuple(py_retval(), 2);
@@ -355,8 +480,12 @@ static bool c_socket_getpeername(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     int fd = (int)py_toint(py_arg(0));
     struct sockaddr_in sin;
-    socklen_t len = sizeof(sin);
+    socklen_compat len = sizeof(sin);
+#ifdef _WIN32
+    if (getpeername((SOCKET)fd, (struct sockaddr*)&sin, &len) != 0) return OSError("getpeername failed");
+#else
     if (getpeername(fd, (struct sockaddr*)&sin, &len) < 0) return OSError("getpeername failed");
+#endif
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &sin.sin_addr, ip, sizeof(ip));
     py_newtuple(py_retval(), 2);
@@ -371,7 +500,11 @@ static bool c_socket_shutdown(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(2);
     int fd = (int)py_toint(py_arg(0));
     int how = (int)py_toint(py_arg(1));
+#ifdef _WIN32
+    shutdown((SOCKET)fd, how);
+#else
     shutdown(fd, how);
+#endif
     py_newnone(py_retval());
     return true;
 }
@@ -406,6 +539,22 @@ static bool c_socket_ntohl(int argc, py_StackRef argv) {
 
 static bool c_os_listdir(int argc, py_StackRef argv) {
     const char* path = argc > 0 ? py_tostr(py_arg(0)) : ".";
+#ifdef _WIN32
+    char search[MAX_PATH];
+    snprintf(search, sizeof(search), "%s\\*", path);
+    WIN32_FIND_DATAA fd;
+    HANDLE hFind = FindFirstFileA(search, &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return OSError("Cannot open directory: %s", path);
+    py_newlist(py_retval());
+    do {
+        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0) {
+            py_newstr(py_r0(), fd.cFileName);
+            py_list_append(py_retval(), py_r0());
+        }
+    } while (FindNextFileA(hFind, &fd));
+    FindClose(hFind);
+    return true;
+#else
     DIR* d = opendir(path);
     if (!d) return OSError("Cannot open directory: %s", path);
     py_newlist(py_retval());
@@ -417,12 +566,17 @@ static bool c_os_listdir(int argc, py_StackRef argv) {
     }
     closedir(d);
     return true;
+#endif
 }
 
 static bool c_os_mkdir(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     const char* path = py_tostr(py_arg(0));
+#ifdef _WIN32
+    if (_mkdir(path) != 0 && errno != EEXIST) return OSError("mkdir failed: %s", strerror(errno));
+#else
     if (mkdir(path, 0755) != 0 && errno != EEXIST) return OSError("mkdir failed: %s", strerror(errno));
+#endif
     py_newnone(py_retval());
     return true;
 }
@@ -434,27 +588,44 @@ static bool c_os_makedirs(int argc, py_StackRef argv) {
     snprintf(tmp, sizeof(tmp), "%s", path);
     size_t len = strlen(tmp);
     for (size_t i = 1; i < len; i++) {
-        if (tmp[i] == '/') {
+        if (tmp[i] == '/' || tmp[i] == '\\') {
+            char sep = tmp[i];
             tmp[i] = 0;
+#ifdef _WIN32
+            _mkdir(tmp);
+#else
             mkdir(tmp, 0755);
-            tmp[i] = '/';
+#endif
+            tmp[i] = sep;
         }
     }
+#ifdef _WIN32
+    _mkdir(tmp);
+#else
     mkdir(tmp, 0755);
+#endif
     py_newnone(py_retval());
     return true;
 }
 
 static bool c_os_rmdir(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
+#ifdef _WIN32
+    if (_rmdir(py_tostr(py_arg(0))) != 0) return OSError("rmdir failed");
+#else
     if (rmdir(py_tostr(py_arg(0))) != 0) return OSError("rmdir failed");
+#endif
     py_newnone(py_retval());
     return true;
 }
 
 static bool c_os_remove(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
+#ifdef _WIN32
+    if (_unlink(py_tostr(py_arg(0))) != 0) return OSError("remove failed: %s", strerror(errno));
+#else
     if (unlink(py_tostr(py_arg(0))) != 0) return OSError("remove failed: %s", strerror(errno));
+#endif
     py_newnone(py_retval());
     return true;
 }
@@ -488,7 +659,21 @@ static bool c_os_stat(int argc, py_StackRef argv) {
 }
 
 static bool c_os_statvfs(int argc, py_StackRef argv) {
-    const char* path = argc > 0 ? py_tostr(py_arg(0)) : "/data";
+    const char* path = argc > 0 ? py_tostr(py_arg(0)) : ".";
+#ifdef _WIN32
+    ULARGE_INTEGER free_bytes, total_bytes, total_free;
+    if (!GetDiskFreeSpaceExA(path, &free_bytes, &total_bytes, &total_free)) {
+        return OSError("statvfs failed");
+    }
+    py_newdict(py_retval());
+    py_newint(py_r0(), (int64_t)total_bytes.QuadPart);
+    py_dict_setitem_by_str(py_retval(), "total", py_r0());
+    py_newint(py_r0(), (int64_t)total_free.QuadPart);
+    py_dict_setitem_by_str(py_retval(), "free", py_r0());
+    py_newint(py_r0(), (int64_t)free_bytes.QuadPart);
+    py_dict_setitem_by_str(py_retval(), "avail", py_r0());
+    return true;
+#else
     struct statvfs s;
     if (statvfs(path, &s) != 0) return OSError("statvfs failed");
     py_newdict(py_retval());
@@ -502,58 +687,101 @@ static bool c_os_statvfs(int argc, py_StackRef argv) {
     py_newint(py_r0(), avail);
     py_dict_setitem_by_str(py_retval(), "avail", py_r0());
     return true;
+#endif
 }
 
 static bool c_os_chmod(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(2);
+#ifdef _WIN32
+    _chmod(py_tostr(py_arg(0)), (int)py_toint(py_arg(1)));
+#else
     chmod(py_tostr(py_arg(0)), (mode_t)py_toint(py_arg(1)));
+#endif
     py_newnone(py_retval());
     return true;
 }
 
 static bool c_os_getcwd(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
     char buf[1024];
+#ifdef _WIN32
+    if (!_getcwd(buf, sizeof(buf))) return OSError("getcwd failed");
+#else
     if (!getcwd(buf, sizeof(buf))) return OSError("getcwd failed");
+#endif
     py_newstr(py_retval(), buf);
     return true;
 }
 
 static bool c_os_chdir(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
+#ifdef _WIN32
+    if (_chdir(py_tostr(py_arg(0))) != 0) return OSError("chdir failed");
+#else
     if (chdir(py_tostr(py_arg(0))) != 0) return OSError("chdir failed");
+#endif
     py_newnone(py_retval());
     return true;
 }
 
 static bool c_os_access(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(2);
+#ifdef _WIN32
+    int res = _access(py_tostr(py_arg(0)), (int)py_toint(py_arg(1)));
+#else
     int res = access(py_tostr(py_arg(0)), (int)py_toint(py_arg(1)));
+#endif
     py_newbool(py_retval(), res == 0);
     return true;
 }
 
 static bool c_os_getpid(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
+#ifdef _WIN32
+    py_newint(py_retval(), _getpid());
+#else
     py_newint(py_retval(), getpid());
+#endif
     return true;
 }
 
 static bool c_os_getppid(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
+#ifdef _WIN32
+    py_newint(py_retval(), 0);
+#else
     py_newint(py_retval(), getppid());
+#endif
     return true;
 }
 
 static bool c_os_getuid(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
+#ifdef _WIN32
+    py_newint(py_retval(), 0);
+#else
     py_newint(py_retval(), getuid());
+#endif
     return true;
 }
 
 static bool c_os_geteuid(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
+#ifdef _WIN32
+    py_newint(py_retval(), 0);
+#else
     py_newint(py_retval(), geteuid());
+#endif
     return true;
 }
 
 static bool c_os_getgid(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
+#ifdef _WIN32
+    py_newint(py_retval(), 0);
+#else
     py_newint(py_retval(), getgid());
+#endif
     return true;
 }
 
@@ -573,14 +801,22 @@ static bool c_os_getenv(int argc, py_StackRef argv) {
 
 static bool c_os_putenv(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(2);
+#ifdef _WIN32
+    _putenv_s(py_tostr(py_arg(0)), py_tostr(py_arg(1)));
+#else
     setenv(py_tostr(py_arg(0)), py_tostr(py_arg(1)), 1);
+#endif
     py_newnone(py_retval());
     return true;
 }
 
 static bool c_os_unsetenv(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
+#ifdef _WIN32
+    _putenv_s(py_tostr(py_arg(0)), "");
+#else
     unsetenv(py_tostr(py_arg(0)));
+#endif
     py_newnone(py_retval());
     return true;
 }
@@ -595,7 +831,11 @@ static bool c_os_system(int argc, py_StackRef argv) {
 static bool c_os_popen(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     const char* cmd = py_tostr(py_arg(0));
+#ifdef _WIN32
+    FILE* p = _popen(cmd, "r");
+#else
     FILE* p = popen(cmd, "r");
+#endif
     if (!p) return OSError("popen failed");
     char* out = NULL;
     size_t out_len = 0;
@@ -603,19 +843,54 @@ static bool c_os_popen(int argc, py_StackRef argv) {
     while (fgets(chunk, sizeof(chunk), p)) {
         size_t clen = strlen(chunk);
         char* n = (char*)realloc(out, out_len + clen + 1);
-        if (!n) { free(out); pclose(p); return RuntimeError("Out of memory"); }
+        if (!n) { free(out);
+#ifdef _WIN32
+            _pclose(p);
+#else
+            pclose(p);
+#endif
+            return RuntimeError("Out of memory");
+        }
         out = n;
         memcpy(out + out_len, chunk, clen);
         out_len += clen;
         out[out_len] = 0;
     }
+#ifdef _WIN32
+    _pclose(p);
+#else
     pclose(p);
+#endif
     py_newstr(py_retval(), out ? out : "");
     if (out) free(out);
     return true;
 }
 
 static bool c_os_uname(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
+#ifdef _WIN32
+    py_newdict(py_retval());
+    py_newstr(py_r0(), "Windows");
+    py_dict_setitem_by_str(py_retval(), "sysname", py_r0());
+    char comp[MAX_COMPUTERNAME_LENGTH + 1] = "localhost";
+    DWORD sz = sizeof(comp);
+    GetComputerNameA(comp, &sz);
+    py_newstr(py_r0(), comp);
+    py_dict_setitem_by_str(py_retval(), "nodename", py_r0());
+    py_newstr(py_r0(), "10.0");
+    py_dict_setitem_by_str(py_retval(), "release", py_r0());
+    py_newstr(py_r0(), "Windows Build");
+    py_dict_setitem_by_str(py_retval(), "version", py_r0());
+#if defined(_M_X64) || defined(__x86_64__)
+    py_newstr(py_r0(), "x86_64");
+#elif defined(_M_ARM64) || defined(__aarch64__)
+    py_newstr(py_r0(), "arm64");
+#else
+    py_newstr(py_r0(), "x86");
+#endif
+    py_dict_setitem_by_str(py_retval(), "machine", py_r0());
+    return true;
+#else
     struct utsname u;
     if (uname(&u) != 0) return OSError("uname failed");
     py_newdict(py_retval());
@@ -630,11 +905,19 @@ static bool c_os_uname(int argc, py_StackRef argv) {
     py_newstr(py_r0(), u.machine);
     py_dict_setitem_by_str(py_retval(), "machine", py_r0());
     return true;
+#endif
 }
 
 static bool c_os_cpu_count(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
+#ifdef _WIN32
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    py_newint(py_retval(), si.dwNumberOfProcessors > 0 ? si.dwNumberOfProcessors : 1);
+#else
     long n = sysconf(_SC_NPROCESSORS_ONLN);
     py_newint(py_retval(), n > 0 ? n : 1);
+#endif
     return true;
 }
 
@@ -643,6 +926,16 @@ static bool c_os_urandom(int argc, py_StackRef argv) {
     int n = (int)py_toint(py_arg(0));
     if (n < 0) return ValueError("Negative size");
     unsigned char* b = py_newbytes(py_retval(), n);
+#ifdef _WIN32
+    HCRYPTPROV hProv;
+    if (CryptAcquireContextA(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT | CRYPT_SILENT)) {
+        CryptGenRandom(hProv, (DWORD)n, b);
+        CryptReleaseContext(hProv, 0);
+        return true;
+    }
+    for (int i = 0; i < n; i++) b[i] = (unsigned char)rand();
+    return true;
+#else
     FILE* f = fopen("/dev/urandom", "rb");
     if (f) {
         fread(b, 1, n, f);
@@ -651,6 +944,7 @@ static bool c_os_urandom(int argc, py_StackRef argv) {
         for (int i = 0; i < n; i++) b[i] = (unsigned char)rand();
     }
     return true;
+#endif
 }
 
 static bool c_os_open(int argc, py_StackRef argv) {
@@ -658,7 +952,11 @@ static bool c_os_open(int argc, py_StackRef argv) {
     const char* path = py_tostr(py_arg(0));
     int flags = (int)py_toint(py_arg(1));
     mode_t mode = argc > 2 ? (mode_t)py_toint(py_arg(2)) : 0644;
+#ifdef _WIN32
+    int fd = _open(path, flags, mode);
+#else
     int fd = open(path, flags, mode);
+#endif
     if (fd < 0) return OSError("open() failed: %s", strerror(errno));
     py_newint(py_retval(), fd);
     return true;
@@ -670,7 +968,11 @@ static bool c_os_read(int argc, py_StackRef argv) {
     int n = (int)py_toint(py_arg(1));
     unsigned char* buf = (unsigned char*)malloc(n);
     if (!buf) return RuntimeError("Out of memory");
+#ifdef _WIN32
+    int r = _read(fd, buf, n);
+#else
     ssize_t r = read(fd, buf, n);
+#endif
     if (r < 0) { free(buf); return OSError("read() failed"); }
     unsigned char* dst = py_newbytes(py_retval(), (int)r);
     memcpy(dst, buf, r);
@@ -684,7 +986,11 @@ static bool c_os_write(int argc, py_StackRef argv) {
     int len = 0;
     const unsigned char* data = get_bytes_or_str(py_arg(1), &len);
     if (!data) return TypeError("Expected bytes or str");
+#ifdef _WIN32
+    int w = _write(fd, data, len);
+#else
     ssize_t w = write(fd, data, len);
+#endif
     if (w < 0) return OSError("write() failed");
     py_newint(py_retval(), (int64_t)w);
     return true;
@@ -692,35 +998,57 @@ static bool c_os_write(int argc, py_StackRef argv) {
 
 static bool c_os_close(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
-    close((int)py_toint(py_arg(0)));
+    CLOSE_FD((int)py_toint(py_arg(0)));
     py_newnone(py_retval());
     return true;
 }
 
 static bool c_os_lseek(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(3);
-    off_t off = lseek((int)py_toint(py_arg(0)), (off_t)py_toint(py_arg(1)), (int)py_toint(py_arg(2)));
+    int fd = (int)py_toint(py_arg(0));
+    int64_t offset = py_toint(py_arg(1));
+    int origin = (int)py_toint(py_arg(2));
+#ifdef _WIN32
+    int64_t off = _lseeki64(fd, offset, origin);
+#else
+    off_t off = lseek(fd, (off_t)offset, origin);
+#endif
     py_newint(py_retval(), (int64_t)off);
     return true;
 }
 
 static bool c_os_fsync(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
-    fsync((int)py_toint(py_arg(0)));
+    int fd = (int)py_toint(py_arg(0));
+#ifdef _WIN32
+    _commit(fd);
+#else
+    fsync(fd);
+#endif
     py_newnone(py_retval());
     return true;
 }
 
 static bool c_os_dup(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
-    int nfd = dup((int)py_toint(py_arg(0)));
+    int fd = (int)py_toint(py_arg(0));
+#ifdef _WIN32
+    int nfd = _dup(fd);
+#else
+    int nfd = dup(fd);
+#endif
     py_newint(py_retval(), nfd);
     return true;
 }
 
 static bool c_os_pipe(int argc, py_StackRef argv) {
+    (void)argc; (void)argv;
     int fds[2];
+#ifdef _WIN32
+    if (_pipe(fds, 4096, _O_BINARY) != 0) return OSError("pipe() failed");
+#else
     if (pipe(fds) != 0) return OSError("pipe() failed");
+#endif
     py_newtuple(py_retval(), 2);
     py_newint(py_r0(), fds[0]);
     py_tuple_setitem(py_retval(), 0, py_r0());
@@ -731,7 +1059,12 @@ static bool c_os_pipe(int argc, py_StackRef argv) {
 
 static bool c_os_isatty(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
-    py_newbool(py_retval(), isatty((int)py_toint(py_arg(0))) == 1);
+    int fd = (int)py_toint(py_arg(0));
+#ifdef _WIN32
+    py_newbool(py_retval(), _isatty(fd) == 1);
+#else
+    py_newbool(py_retval(), isatty(fd) == 1);
+#endif
     return true;
 }
 
@@ -740,7 +1073,14 @@ static bool c_os_isatty(int argc, py_StackRef argv) {
 /* ============================================================= */
 
 static bool c_sysinfo_ram_total(int argc, py_StackRef argv) {
-#if HAS_SYSINFO
+#ifdef _WIN32
+    MEMORYSTATUSEX ms;
+    ms.dwLength = sizeof(ms);
+    if (GlobalMemoryStatusEx(&ms)) {
+        py_newint(py_retval(), (int64_t)ms.ullTotalPhys);
+        return true;
+    }
+#elif HAS_SYSINFO
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
         py_newint(py_retval(), (int64_t)si.totalram * si.mem_unit);
@@ -752,7 +1092,14 @@ static bool c_sysinfo_ram_total(int argc, py_StackRef argv) {
 }
 
 static bool c_sysinfo_ram_free(int argc, py_StackRef argv) {
-#if HAS_SYSINFO
+#ifdef _WIN32
+    MEMORYSTATUSEX ms;
+    ms.dwLength = sizeof(ms);
+    if (GlobalMemoryStatusEx(&ms)) {
+        py_newint(py_retval(), (int64_t)ms.ullAvailPhys);
+        return true;
+    }
+#elif HAS_SYSINFO
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
         py_newint(py_retval(), (int64_t)si.freeram * si.mem_unit);
@@ -764,6 +1111,16 @@ static bool c_sysinfo_ram_free(int argc, py_StackRef argv) {
 }
 
 static bool c_sysinfo_ram_available(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    MEMORYSTATUSEX ms;
+    ms.dwLength = sizeof(ms);
+    if (GlobalMemoryStatusEx(&ms)) {
+        py_newint(py_retval(), (int64_t)ms.ullAvailPhys);
+        return true;
+    }
+    py_newint(py_retval(), 0);
+    return true;
+#else
     int64_t avail = 0;
     FILE* f = fopen("/proc/meminfo", "r");
     if (f) {
@@ -778,10 +1135,18 @@ static bool c_sysinfo_ram_available(int argc, py_StackRef argv) {
     }
     py_newint(py_retval(), avail > 0 ? avail : 0);
     return true;
+#endif
 }
 
 static bool c_sysinfo_ram_used(int argc, py_StackRef argv) {
-#if HAS_SYSINFO
+#ifdef _WIN32
+    MEMORYSTATUSEX ms;
+    ms.dwLength = sizeof(ms);
+    if (GlobalMemoryStatusEx(&ms)) {
+        py_newint(py_retval(), (int64_t)(ms.ullTotalPhys - ms.ullAvailPhys));
+        return true;
+    }
+#elif HAS_SYSINFO
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
         int64_t total = (int64_t)si.totalram * si.mem_unit;
@@ -795,7 +1160,10 @@ static bool c_sysinfo_ram_used(int argc, py_StackRef argv) {
 }
 
 static bool c_sysinfo_uptime(int argc, py_StackRef argv) {
-#if HAS_SYSINFO
+#ifdef _WIN32
+    py_newint(py_retval(), (int64_t)(GetTickCount64() / 1000));
+    return true;
+#elif HAS_SYSINFO
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
         py_newint(py_retval(), si.uptime);
@@ -807,7 +1175,17 @@ static bool c_sysinfo_uptime(int argc, py_StackRef argv) {
 }
 
 static bool c_sysinfo_uptime_str(int argc, py_StackRef argv) {
-#if HAS_SYSINFO
+#ifdef _WIN32
+    int64_t uptime = (int64_t)(GetTickCount64() / 1000);
+    long d = (long)(uptime / 86400);
+    long h = (long)((uptime % 86400) / 3600);
+    long m = (long)((uptime % 3600) / 60);
+    long s = (long)(uptime % 60);
+    char str[64];
+    snprintf(str, sizeof(str), "%ldd %02ld:%02ld:%02ld", d, h, m, s);
+    py_newstr(py_retval(), str);
+    return true;
+#elif HAS_SYSINFO
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
         long d = si.uptime / 86400;
@@ -825,7 +1203,14 @@ static bool c_sysinfo_uptime_str(int argc, py_StackRef argv) {
 }
 
 static bool c_sysinfo_loadavg(int argc, py_StackRef argv) {
-#if HAS_SYSINFO
+#ifdef _WIN32
+    py_newtuple(py_retval(), 3);
+    py_newfloat(py_r0(), 0.0);
+    py_tuple_setitem(py_retval(), 0, py_r0());
+    py_tuple_setitem(py_retval(), 1, py_r0());
+    py_tuple_setitem(py_retval(), 2, py_r0());
+    return true;
+#elif HAS_SYSINFO
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
         py_newtuple(py_retval(), 3);
@@ -859,6 +1244,16 @@ static bool c_sysinfo_procs_count(int argc, py_StackRef argv) {
 }
 
 static bool c_sysinfo_storage_free(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    const char* path = argc > 0 ? py_tostr(py_arg(0)) : "C:\\";
+    ULARGE_INTEGER free_bytes_avail, total_bytes, total_free_bytes;
+    if (GetDiskFreeSpaceExA(path, &free_bytes_avail, &total_bytes, &total_free_bytes)) {
+        py_newint(py_retval(), (int64_t)free_bytes_avail.QuadPart);
+        return true;
+    }
+    py_newint(py_retval(), 0);
+    return true;
+#else
     const char* path = argc > 0 ? py_tostr(py_arg(0)) : "/data";
     struct statvfs s;
     if (statvfs(path, &s) == 0) {
@@ -867,9 +1262,20 @@ static bool c_sysinfo_storage_free(int argc, py_StackRef argv) {
         py_newint(py_retval(), 0);
     }
     return true;
+#endif
 }
 
 static bool c_sysinfo_storage_total(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    const char* path = argc > 0 ? py_tostr(py_arg(0)) : "C:\\";
+    ULARGE_INTEGER free_bytes_avail, total_bytes, total_free_bytes;
+    if (GetDiskFreeSpaceExA(path, &free_bytes_avail, &total_bytes, &total_free_bytes)) {
+        py_newint(py_retval(), (int64_t)total_bytes.QuadPart);
+        return true;
+    }
+    py_newint(py_retval(), 0);
+    return true;
+#else
     const char* path = argc > 0 ? py_tostr(py_arg(0)) : "/data";
     struct statvfs s;
     if (statvfs(path, &s) == 0) {
@@ -878,6 +1284,7 @@ static bool c_sysinfo_storage_total(int argc, py_StackRef argv) {
         py_newint(py_retval(), 0);
     }
     return true;
+#endif
 }
 
 static bool get_android_prop(const char* prop_name, char* out, size_t max_len) {
@@ -890,44 +1297,68 @@ static bool get_android_prop(const char* prop_name, char* out, size_t max_len) {
 }
 
 static bool c_sysinfo_device_model(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    py_newstr(py_retval(), "Windows PC");
+#else
     char val[128] = "Unknown";
     get_android_prop("ro.product.model", val, sizeof(val));
     py_newstr(py_retval(), val);
+#endif
     return true;
 }
 
 static bool c_sysinfo_device_brand(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    py_newstr(py_retval(), "Microsoft");
+#else
     char val[128] = "Unknown";
     get_android_prop("ro.product.brand", val, sizeof(val));
     py_newstr(py_retval(), val);
+#endif
     return true;
 }
 
 static bool c_sysinfo_device_device(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    py_newstr(py_retval(), "win32");
+#else
     char val[128] = "Unknown";
     get_android_prop("ro.product.device", val, sizeof(val));
     py_newstr(py_retval(), val);
+#endif
     return true;
 }
 
 static bool c_sysinfo_device_manufacturer(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    py_newstr(py_retval(), "Microsoft");
+#else
     char val[128] = "Unknown";
     get_android_prop("ro.product.manufacturer", val, sizeof(val));
     py_newstr(py_retval(), val);
+#endif
     return true;
 }
 
 static bool c_sysinfo_android_sdk(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    py_newint(py_retval(), 0);
+#else
     char val[32] = "0";
     get_android_prop("ro.build.version.sdk", val, sizeof(val));
     py_newint(py_retval(), atoi(val));
+#endif
     return true;
 }
 
 static bool c_sysinfo_android_version(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    py_newstr(py_retval(), "Windows");
+#else
     char val[32] = "Unknown";
     get_android_prop("ro.build.version.release", val, sizeof(val));
     py_newstr(py_retval(), val);
+#endif
     return true;
 }
 
@@ -936,30 +1367,64 @@ static bool c_sysinfo_android_version(int argc, py_StackRef argv) {
 /* ============================================================= */
 
 static bool c_time_time(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    ULARGE_INTEGER uli;
+    uli.LowPart = ft.dwLowDateTime;
+    uli.HighPart = ft.dwHighDateTime;
+    int64_t t_100ns = (int64_t)(uli.QuadPart - 116444736000000000ULL);
+    py_newfloat(py_retval(), (double)t_100ns / 10000000.0);
+#else
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     py_newfloat(py_retval(), (double)ts.tv_sec + (double)ts.tv_nsec / 1e9);
+#endif
     return true;
 }
 
 static bool c_time_time_ns(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    ULARGE_INTEGER uli;
+    uli.LowPart = ft.dwLowDateTime;
+    uli.HighPart = ft.dwHighDateTime;
+    int64_t t_100ns = (int64_t)(uli.QuadPart - 116444736000000000ULL);
+    py_newint(py_retval(), t_100ns * 100LL);
+#else
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     py_newint(py_retval(), (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec);
+#endif
     return true;
 }
 
 static bool c_time_monotonic(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    LARGE_INTEGER freq, counter;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&counter);
+    py_newfloat(py_retval(), (double)counter.QuadPart / (double)freq.QuadPart);
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     py_newfloat(py_retval(), (double)ts.tv_sec + (double)ts.tv_nsec / 1e9);
+#endif
     return true;
 }
 
 static bool c_time_monotonic_ns(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    LARGE_INTEGER freq, counter;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&counter);
+    py_newint(py_retval(), (int64_t)((counter.QuadPart * 1000000000LL) / freq.QuadPart));
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     py_newint(py_retval(), (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec);
+#endif
     return true;
 }
 
@@ -974,17 +1439,32 @@ static bool c_time_perf_counter_ns(int argc, py_StackRef argv) {
 static bool c_time_sleep(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     double sec = to_number(py_arg(0));
+#ifdef _WIN32
+    if (sec > 0) {
+        Sleep((DWORD)(sec * 1000.0));
+    }
+#else
     struct timespec req;
     req.tv_sec = (time_t)sec;
     req.tv_nsec = (long)((sec - req.tv_sec) * 1e9);
     nanosleep(&req, NULL);
+#endif
     py_newnone(py_retval());
     return true;
 }
 
 static bool c_time_usleep(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
-    usleep((useconds_t)py_toint(py_arg(0)));
+    int64_t usec = py_toint(py_arg(0));
+#ifdef _WIN32
+    if (usec > 0) {
+        DWORD ms = (DWORD)(usec / 1000);
+        if (ms == 0 && usec > 0) ms = 1;
+        Sleep(ms);
+    }
+#else
+    usleep((useconds_t)usec);
+#endif
     py_newnone(py_retval());
     return true;
 }
@@ -992,7 +1472,11 @@ static bool c_time_usleep(int argc, py_StackRef argv) {
 static bool c_time_localtime(int argc, py_StackRef argv) {
     time_t t = argc > 0 ? (time_t)py_toint(py_arg(0)) : time(NULL);
     struct tm tm_val;
+#ifdef _WIN32
+    localtime_s(&tm_val, &t);
+#else
     localtime_r(&t, &tm_val);
+#endif
     py_newdict(py_retval());
     py_newint(py_r0(), tm_val.tm_year + 1900);
     py_dict_setitem_by_str(py_retval(), "year", py_r0());
@@ -1016,7 +1500,11 @@ static bool c_time_localtime(int argc, py_StackRef argv) {
 static bool c_time_gmtime(int argc, py_StackRef argv) {
     time_t t = argc > 0 ? (time_t)py_toint(py_arg(0)) : time(NULL);
     struct tm tm_val;
+#ifdef _WIN32
+    gmtime_s(&tm_val, &t);
+#else
     gmtime_r(&t, &tm_val);
+#endif
     py_newdict(py_retval());
     py_newint(py_r0(), tm_val.tm_year + 1900);
     py_dict_setitem_by_str(py_retval(), "year", py_r0());
@@ -1038,7 +1526,11 @@ static bool c_time_strftime(int argc, py_StackRef argv) {
     const char* fmt = py_tostr(py_arg(0));
     time_t t = argc > 1 ? (time_t)py_toint(py_arg(1)) : time(NULL);
     struct tm tm_val;
+#ifdef _WIN32
+    localtime_s(&tm_val, &t);
+#else
     localtime_r(&t, &tm_val);
+#endif
     char buf[128];
     strftime(buf, sizeof(buf), fmt, &tm_val);
     py_newstr(py_retval(), buf);
@@ -1046,8 +1538,19 @@ static bool c_time_strftime(int argc, py_StackRef argv) {
 }
 
 static bool c_time_timezone(int argc, py_StackRef argv) {
+#ifdef _WIN32
+    _tzset();
+    long tz = 0;
+    #if defined(_MSC_VER)
+        _get_timezone(&tz);
+    #else
+        tz = _timezone;
+    #endif
+    py_newint(py_retval(), tz);
+#else
     tzset();
     py_newint(py_retval(), timezone);
+#endif
     return true;
 }
 
@@ -1095,21 +1598,49 @@ static bool c_android_speak(int argc, py_StackRef argv) {
 
 static bool c_android_get_battery_level(int argc, py_StackRef argv) {
     int level = 100, charging = 0;
-    if (g_android_hooks.battery) g_android_hooks.battery(&level, &charging);
+    if (g_android_hooks.battery) {
+        g_android_hooks.battery(&level, &charging);
+    } else {
+#ifdef _WIN32
+        SYSTEM_POWER_STATUS sps;
+        if (GetSystemPowerStatus(&sps) && sps.BatteryLifePercent != 255) {
+            level = sps.BatteryLifePercent;
+        }
+#endif
+    }
     py_newint(py_retval(), level);
     return true;
 }
 
 static bool c_android_is_battery_charging(int argc, py_StackRef argv) {
     int level = 100, charging = 0;
-    if (g_android_hooks.battery) g_android_hooks.battery(&level, &charging);
+    if (g_android_hooks.battery) {
+        g_android_hooks.battery(&level, &charging);
+    } else {
+#ifdef _WIN32
+        SYSTEM_POWER_STATUS sps;
+        if (GetSystemPowerStatus(&sps)) {
+            charging = (sps.ACLineStatus == 1);
+        }
+#endif
+    }
     py_newbool(py_retval(), charging != 0);
     return true;
 }
 
 static bool c_android_get_battery_status(int argc, py_StackRef argv) {
     int level = 100, charging = 0;
-    if (g_android_hooks.battery) g_android_hooks.battery(&level, &charging);
+    if (g_android_hooks.battery) {
+        g_android_hooks.battery(&level, &charging);
+    } else {
+#ifdef _WIN32
+        SYSTEM_POWER_STATUS sps;
+        if (GetSystemPowerStatus(&sps)) {
+            if (sps.BatteryLifePercent != 255) level = sps.BatteryLifePercent;
+            charging = (sps.ACLineStatus == 1);
+        }
+#endif
+    }
     py_newdict(py_retval());
     py_newint(py_r0(), level);
     py_dict_setitem_by_str(py_retval(), "level", py_r0());
@@ -1164,8 +1695,15 @@ static bool c_android_is_screen_on(int argc, py_StackRef argv) {
 static bool c_android_beep(int argc, py_StackRef argv) {
     int freq = argc > 0 ? (int)py_toint(py_arg(0)) : 1000;
     int duration = argc > 1 ? (int)py_toint(py_arg(1)) : 200;
-    if (g_android_hooks.beep) g_android_hooks.beep(freq, duration);
-    else printf("\a[Beep %d Hz, %d ms]\n", freq, duration);
+    if (g_android_hooks.beep) {
+        g_android_hooks.beep(freq, duration);
+    } else {
+#ifdef _WIN32
+        Beep((DWORD)freq, (DWORD)duration);
+#else
+        printf("\a[Beep %d Hz, %d ms]\n", freq, duration);
+#endif
+    }
     py_newnone(py_retval());
     return true;
 }
@@ -1924,7 +2462,93 @@ static void register_all_pocketpy_extensions(void) {
     py_bindfunc(mod_os, "isatty", c_os_isatty);
 
     const char* py_os_path_py =
+#ifdef _WIN32
+        "name = 'nt'\n"
+        "sep = '\\\\'\n"
+        "linesep = '\\r\\n'\n"
+        "pathsep = ';'\n"
+        "devnull = 'nul'\n"
+        "class _path:\n"
+        "    sep = '\\\\'\n"
+        "    def join(self, *parts):\n"
+        "        p_list = [p.replace('/', '\\\\') for p in parts if p]\n"
+        "        if not p_list: return ''\n"
+        "        res = p_list[0]\n"
+        "        for p in p_list[1:]:\n"
+        "            if (len(p) >= 2 and p[1] == ':') or p.startswith('\\\\'):\n"
+        "                res = p\n"
+        "            else:\n"
+        "                if not res.endswith('\\\\'): res += '\\\\'\n"
+        "                res += p.lstrip('\\\\')\n"
+        "        return res\n"
+        "    def split(self, p):\n"
+        "        p = p.replace('/', '\\\\')\n"
+        "        if '\\\\' not in p:\n"
+        "            if len(p) >= 2 and p[1] == ':': return p, ''\n"
+        "            return '', p\n"
+        "        idx = p.rfind('\\\\')\n"
+        "        head = p[:idx]\n"
+        "        tail = p[idx+1:]\n"
+        "        if not head and p.startswith('\\\\'): head = '\\\\'\n"
+        "        return head, tail\n"
+        "    def basename(self, p): return self.split(p)[1]\n"
+        "    def dirname(self, p): return self.split(p)[0]\n"
+        "    def splitext(self, p):\n"
+        "        b = self.basename(p)\n"
+        "        if '.' not in b: return p, ''\n"
+        "        idx = p.rfind('.')\n"
+        "        return p[:idx], p[idx:]\n"
+        "    def exists(self, p):\n"
+        "        try: stat(p); return True\n"
+        "        except: return False\n"
+        "    def isfile(self, p):\n"
+        "        try: return stat(p).get('is_file', False)\n"
+        "        except: return False\n"
+        "    def isdir(self, p):\n"
+        "        try: return stat(p).get('is_dir', False)\n"
+        "        except: return False\n"
+        "    def getsize(self, p):\n"
+        "        return stat(p)['size']\n"
+        "    def getmtime(self, p):\n"
+        "        return stat(p)['mtime']\n"
+        "    def abspath(self, p):\n"
+        "        p = p.replace('/', '\\\\')\n"
+        "        if self.isabs(p): return p\n"
+        "        cwd = getcwd()\n"
+        "        if not cwd.endswith('\\\\'): cwd += '\\\\'\n"
+        "        return self.normpath(cwd + p)\n"
+        "    def isabs(self, p):\n"
+        "        p = p.replace('/', '\\\\')\n"
+        "        return (len(p) >= 2 and p[1] == ':') or p.startswith('\\\\')\n"
+        "    def normpath(self, p):\n"
+        "        p = p.replace('/', '\\\\')\n"
+        "        prefix = ''\n"
+        "        if len(p) >= 2 and p[1] == ':':\n"
+        "            prefix = p[:2]\n"
+        "            p = p[2:]\n"
+        "        if p.startswith('\\\\'):\n"
+        "            prefix += '\\\\'\n"
+        "        parts = [x for x in p.split('\\\\') if x and x != '.']\n"
+        "        res = []\n"
+        "        for part in parts:\n"
+        "            if part == '..':\n"
+        "                if res: res.pop()\n"
+        "            else: res.append(part)\n"
+        "        return prefix + '\\\\'.join(res)\n"
+        "    def relpath(self, p, start='.'):\n"
+        "        return p\n"
+        "    def expanduser(self, p):\n"
+        "        if p.startswith('~'):\n"
+        "            h = getenv('USERPROFILE', getenv('HOME', 'C:\\\\'))\n"
+        "            return h + p[1:]\n"
+        "        return p\n"
+        "path = _path()\n"
+#else
+        "name = 'posix'\n"
         "sep = '/'\n"
+        "linesep = '\\n'\n"
+        "pathsep = ':'\n"
+        "devnull = '/dev/null'\n"
         "class _path:\n"
         "    sep = '/'\n"
         "    def join(self, *parts):\n"
@@ -1978,7 +2602,9 @@ static void register_all_pocketpy_extensions(void) {
         "            h = getenv('HOME', '/data/data/com.termux/files/home')\n"
         "            return h + p[1:]\n"
         "        return p\n"
-        "path = _path()\n";
+        "path = _path()\n"
+#endif
+        ;
     if (!py_exec(py_os_path_py, "<os.path>", EXEC_MODE, mod_os)) {
         char* err = py_formatexc();
         if (err) { printf("OS.path init error: %s\n", err); free(err); }
