@@ -879,6 +879,13 @@ static bool c_sysinfo_device_brand(int argc, py_StackRef argv) {
     return true;
 }
 
+static bool c_sysinfo_device_device(int argc, py_StackRef argv) {
+    char val[128] = "Unknown";
+    get_android_prop("ro.product.device", val, sizeof(val));
+    py_newstr(py_retval(), val);
+    return true;
+}
+
 static bool c_sysinfo_device_manufacturer(int argc, py_StackRef argv) {
     char val[128] = "Unknown";
     get_android_prop("ro.product.manufacturer", val, sizeof(val));
@@ -1876,6 +1883,7 @@ static void register_all_pocketpy_extensions(void) {
     py_bindfunc(mod_sysinfo, "ram_total", c_sysinfo_ram_total);
     py_bindfunc(mod_sysinfo, "ram_free", c_sysinfo_ram_free);
     py_bindfunc(mod_sysinfo, "ram_available", c_sysinfo_ram_available);
+    py_bindfunc(mod_sysinfo, "ram_avail", c_sysinfo_ram_available);
     py_bindfunc(mod_sysinfo, "ram_used", c_sysinfo_ram_used);
     py_bindfunc(mod_sysinfo, "uptime", c_sysinfo_uptime);
     py_bindfunc(mod_sysinfo, "uptime_str", c_sysinfo_uptime_str);
@@ -1884,10 +1892,17 @@ static void register_all_pocketpy_extensions(void) {
     py_bindfunc(mod_sysinfo, "storage_free", c_sysinfo_storage_free);
     py_bindfunc(mod_sysinfo, "storage_total", c_sysinfo_storage_total);
     py_bindfunc(mod_sysinfo, "device_model", c_sysinfo_device_model);
+    py_bindfunc(mod_sysinfo, "model", c_sysinfo_device_model);
     py_bindfunc(mod_sysinfo, "device_brand", c_sysinfo_device_brand);
+    py_bindfunc(mod_sysinfo, "brand", c_sysinfo_device_brand);
+    py_bindfunc(mod_sysinfo, "device", c_sysinfo_device_device);
     py_bindfunc(mod_sysinfo, "device_manufacturer", c_sysinfo_device_manufacturer);
+    py_bindfunc(mod_sysinfo, "manufacturer", c_sysinfo_device_manufacturer);
     py_bindfunc(mod_sysinfo, "android_sdk", c_sysinfo_android_sdk);
+    py_bindfunc(mod_sysinfo, "sdk_int", c_sysinfo_android_sdk);
     py_bindfunc(mod_sysinfo, "android_version", c_sysinfo_android_version);
+    py_bindfunc(mod_sysinfo, "android_release", c_sysinfo_android_version);
+    py_bindfunc(mod_sysinfo, "cpu_count", c_os_cpu_count);
 
     /* 4. EXTENDED TIME */
     py_GlobalRef mod_time = get_or_create_module("time");
