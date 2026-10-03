@@ -13,12 +13,13 @@ class FileManager(private val context: Context) {
         if (files.isEmpty()) {
             restoreSamples()
         } else {
-            val sampleNames = SampleScripts.SAMPLES.keys
+            val sampleMap = SampleScripts.SAMPLES.toMap()
             for (f in files) {
-                if (f.name in sampleNames) {
+                val newContent = sampleMap[f.name]
+                if (newContent != null) {
                     val content = readFile(f)
                     if (content.contains("\\\\r\\\\n") || (f.name == "7_mini_webserver.py" && !content.contains("start_time"))) {
-                        SampleScripts.SAMPLES[f.name]?.let { saveFile(f, it) }
+                        saveFile(f, newContent)
                     }
                 }
             }
