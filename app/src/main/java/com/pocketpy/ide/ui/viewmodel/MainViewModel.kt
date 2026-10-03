@@ -128,6 +128,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val code = _codeState.value.text
         val filename = _activeFile.value?.name ?: "script.py"
 
+        // If it's an HTML file, preview directly in the Visual Tab
+        if (filename.endsWith(".html", ignoreCase = true) || filename.endsWith(".htm", ignoreCase = true)) {
+            _htmlOutput.value = code
+            _selectedTab.value = 2 // Switch to Visual tab
+            return
+        }
+
         _selectedTab.value = 1 // Switch to terminal
         _isRunning.value = true
         _terminalOutput.value = "=== Running with PocketPy: $filename ===\n\n"

@@ -234,13 +234,13 @@ class DeyeReader:
             raise e
 
 def render_terminal_dashboard(data):
-    C_RESET = "\\033[0m"
-    C_BOLD = "\\033[1m"
-    C_GREEN = "\\033[32m"
-    C_YELLOW = "\\033[33m"
-    C_BLUE = "\\033[34m"
-    C_CYAN = "\\033[36m"
-    C_RED = "\\033[31m"
+    C_RESET = "\x1b[0m"
+    C_BOLD = "\x1b[1m"
+    C_GREEN = "\x1b[32m"
+    C_YELLOW = "\x1b[33m"
+    C_BLUE = "\x1b[34m"
+    C_CYAN = "\x1b[36m"
+    C_RED = "\x1b[31m"
 
     mode = data.get("mode", "LIVE")
     print(f"{C_BOLD}{C_CYAN}========================================================================{C_RESET}")
@@ -267,8 +267,30 @@ def render_terminal_dashboard(data):
 
 reader = DeyeReader("192.168.188.128", 8899, 1109501211)
 print("Verbinde zu Deye Inverter (192.168.188.128:8899)...")
-data = reader.read_telemetry()
-render_terminal_dashboard(data)
+try:
+    data = reader.read_telemetry()
+    render_terminal_dashboard(data)
+except Exception as e:
+    print(f"\n\x1b[33m[Hinweis] Konnte Inverter unter 192.168.188.128 nicht erreichen: {e}\x1b[0m")
+    print("\x1b[36m[Demo-Modus] Zeige simulierte Messdaten des Wechselrichters:\x1b[0m\n")
+    demo_data = {
+        "mode": "DEMO (Simuliert)",
+        "status_text": "Normal (Hybrid)",
+        "logger_serial": 1109501211,
+        "pv_power_total_w": 4850.0,
+        "energy_pv_today_kwh": 28.4,
+        "pv1_power_w": 2500.0, "pv1_voltage_v": 380.5, "pv1_current_a": 6.57,
+        "pv2_power_w": 2350.0, "pv2_voltage_v": 375.0, "pv2_current_a": 6.26,
+        "battery_soc_percent": 88,
+        "battery_power_w": 2200,
+        "battery_voltage_v": 52.4,
+        "battery_current_a": 42.0,
+        "temp_battery_celsius": 24.5,
+        "grid_power_total_w": -2100,
+        "grid_frequency_hz": 50.01,
+        "load_power_total_w": 550,
+    }
+    render_terminal_dashboard(demo_data)
 """.trimIndent(),
 
         "5_system_and_hardware.py" to """# 📱 Native System & Hardware Inspector

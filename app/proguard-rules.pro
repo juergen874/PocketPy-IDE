@@ -12,9 +12,26 @@
 #   public *;
 #}
 
-# Keep PocketPy engine classes and JNI callbacks
+# Keep PocketPy engine classes, callbacks and data models
 -keep class com.pocketpy.ide.engine.** { *; }
 -keepclassmembers class com.pocketpy.ide.engine.** { *; }
+-keep interface com.pocketpy.ide.engine.PocketPyCallback { *; }
+-keep class * implements com.pocketpy.ide.engine.PocketPyCallback { *; }
+-keepclassmembers class * implements com.pocketpy.ide.engine.PocketPyCallback { *; }
+
+# Keep ViewModel callbacks and properties
+-keep class com.pocketpy.ide.ui.viewmodel.** { *; }
+-keepclassmembers class com.pocketpy.ide.ui.viewmodel.** { *; }
+
+# Keep native methods
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+
+# Keep WebView and JavaScript interfaces
+-keepattributes JavascriptInterface
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keep class android.webkit.** { *; }
+-keepclassmembers class * extends android.webkit.WebViewClient { *; }
