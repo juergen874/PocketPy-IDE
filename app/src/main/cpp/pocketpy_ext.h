@@ -293,6 +293,17 @@ static bool c_socket_settimeout(int argc, py_StackRef argv) {
     return true;
 }
 
+static bool c_socket_setsockopt(int argc, py_StackRef argv) {
+    PY_CHECK_ARGC(4);
+    int fd = (int)py_toint(py_arg(0));
+    int level = (int)py_toint(py_arg(1));
+    int optname = (int)py_toint(py_arg(2));
+    int optval = (int)py_toint(py_arg(3));
+    setsockopt(fd, level, optname, &optval, sizeof(optval));
+    py_newnone(py_retval());
+    return true;
+}
+
 static bool c_socket_gethostbyname(int argc, py_StackRef argv) {
     PY_CHECK_ARGC(1);
     const char* name = py_tostr(py_arg(0));
@@ -1722,6 +1733,7 @@ static void register_all_pocketpy_extensions(void) {
     py_bindfunc(mod_sock, "_recvfrom", c_socket_recvfrom);
     py_bindfunc(mod_sock, "_close", c_socket_close);
     py_bindfunc(mod_sock, "_settimeout", c_socket_settimeout);
+    py_bindfunc(mod_sock, "_setsockopt", c_socket_setsockopt);
     py_bindfunc(mod_sock, "gethostbyname", c_socket_gethostbyname);
     py_bindfunc(mod_sock, "gethostname", c_socket_gethostname);
     py_bindfunc(mod_sock, "_getsockname", c_socket_getsockname);
@@ -1734,10 +1746,16 @@ static void register_all_pocketpy_extensions(void) {
 
     const char* py_socket_py =
         "AF_INET = 2\n"
+        "AF_INET6 = 10\n"
         "SOCK_STREAM = 1\n"
         "SOCK_DGRAM = 2\n"
         "SOL_SOCKET = 1\n"
         "SO_REUSEADDR = 2\n"
+        "SO_KEEPALIVE = 9\n"
+        "SO_BROADCAST = 6\n"
+        "IPPROTO_TCP = 6\n"
+        "IPPROTO_UDP = 17\n"
+        "TCP_NODELAY = 1\n"
         "class socket:\n"
         "    def __init__(self, family=2, type=1):\n"
         "        self.family = family\n"
@@ -1747,6 +1765,16 @@ static void register_all_pocketpy_extensions(void) {
         "    def settimeout(self, t):\n"
         "        self._timeout = float(t)\n"
         "        if self.fd is not None: _settimeout(self.fd, self._timeout)\n"
+        "    def gettimeout(self):\n"
+        "        return self._timeout\n"
+        "    def setsockopt(self, level, optname, value):\n"
+        "        if self.fd is not None:\n"
+        "            try: _setsockopt(self.fd, int(level), int(optname), int(value))\n"
+        "            except Exception: pass\n"
+        "    def getsockopt(self, level, optname):\n"
+        "        return 1\n"
+        "    def setblocking(self, flag):\n"
+        "        pass\n"
         "    def connect(self, addr):\n"
         "        h, p = addr\n"
         "        self.fd = _tcp_client(str(h), int(p), self._timeout)\n"
@@ -1776,7 +1804,9 @@ static void register_all_pocketpy_extensions(void) {
         "    def fileno(self): return self.fd\n"
         "    def getsockname(self): return _getsockname(self.fd)\n"
         "    def getpeername(self): return _getpeername(self.fd)\n"
-        "    def shutdown(self, how=2): _shutdown(self.fd, how)\n";
+        "    def shutdown(self, how=2): _shutdown(self.fd, how)\n"
+        "def setdefaulttimeout(t): pass\n"
+        "def getdefaulttimeout(): return 5.0\n";
     if (!py_exec(py_socket_py, "<socket>", EXEC_MODE, mod_sock)) {
         char* err = py_formatexc();
         if (err) { printf("Socket init error: %s\n", err); free(err); }
