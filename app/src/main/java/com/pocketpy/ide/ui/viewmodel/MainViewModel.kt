@@ -61,8 +61,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val content = fileManager.readFile(file)
         _codeState.value = TextFieldValue(content)
 
-        if (file.name.endsWith(".html")) {
+        if (file.name.endsWith(".html", ignoreCase = true) || file.name.endsWith(".htm", ignoreCase = true)) {
             _htmlOutput.value = content
+        } else if (content.contains("<html") && content.contains("</html>")) {
+            val start = content.indexOf("<html")
+            val end = content.lastIndexOf("</html>")
+            if (start != -1 && end != -1) {
+                _htmlOutput.value = content.substring(start, end + 7)
+            }
         }
     }
 
@@ -133,6 +139,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _htmlOutput.value = code
             _selectedTab.value = 2 // Switch to Visual tab
             return
+        }
+
+        // Pre-extract HTML for Visual Tab if script embeds HTML
+        if (code.contains("<html") && code.contains("</html>")) {
+            val start = code.indexOf("<html")
+            val end = code.lastIndexOf("</html>")
+            if (start != -1 && end != -1) {
+                _htmlOutput.value = code.substring(start, end + 7)
+            }
         }
 
         _selectedTab.value = 1 // Switch to terminal

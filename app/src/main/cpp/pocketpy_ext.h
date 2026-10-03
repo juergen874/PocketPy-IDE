@@ -139,6 +139,9 @@ static bool c_socket_tcp_server(int argc, py_StackRef argv) {
 
     int opt = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+#ifdef SO_REUSEPORT
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+#endif
 
     struct sockaddr_in serv_addr;
     memset(&serv_addr, 0, sizeof(serv_addr));
@@ -168,7 +171,10 @@ static bool c_socket_accept(int argc, py_StackRef argv) {
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
     int client_fd = accept(fd, (struct sockaddr*)&client_addr, &client_len);
-    if (client_fd < 0) return OSError("accept() failed: %s", strerror(errno));
+    if (client_fd < 0) {
+        if (errno == EWOULDBLOCK || errno == EAGAIN) return TimeoutError("Socket accept timed out");
+        return OSError("accept() failed: %s", strerror(errno));
+    }
 
     char ip_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, sizeof(ip_str));
@@ -190,9 +196,16 @@ static bool c_socket_send(int argc, py_StackRef argv) {
     int len = 0;
     const unsigned char* data = get_bytes_or_str(py_arg(1), &len);
     if (!data) return TypeError("Expected bytes or str");
-    int sent = send(fd, data, len, 0);
-    if (sent < 0) return OSError("send() failed: %s", strerror(errno));
-    py_newint(py_retval(), sent);
+    int total = 0;
+    while (total < len) {
+        int sent = send(fd, data + total, len - total, 0);
+        if (sent < 0) {
+            if (errno == EINTR) continue;
+            return OSError("send() failed: %s", strerror(errno));
+        }
+        total += sent;
+    }
+    py_newint(py_retval(), total);
     return true;
 }
 

@@ -371,38 +371,89 @@ print("Erfolgreich abgeschlossen!")
 """.trimIndent(),
 
         "7_mini_webserver.py" to """# 🌐 PocketPy Micro HTTP Web Server
-# Serves live hardware telemetry over HTTP on port 8080!
+# Serves live hardware telemetry over HTTP!
 import socket
 import sysinfo
+import time
 
 HOST = "0.0.0.0"
 PORT = 8080
 
 srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-srv.bind((HOST, PORT))
-srv.listen(1)
 
-print("=" * 55)
-print(f"  PocketPy MicroServer läuft auf http://127.0.0.1:{PORT}")
-print("  Öffne diese URL im Browser oder sende eine Anfrage.")
-print("=" * 55)
+# Fallback ports in case 8080 is blocked or busy
+bound = False
+for p in [8080, 8088, 8888, 9090]:
+    try:
+        srv.bind((HOST, p))
+        PORT = p
+        bound = True
+        break
+    except Exception:
+        continue
 
-# Wait for 1 client request
-client, addr = srv.accept()
-print(f"Anfrage von: {addr[0]}:{addr[1]}")
-req = client.recv(1024)
+if not bound:
+    print("Fehler: Konnte keinen Server-Port öffnen.")
+else:
+    srv.listen(5)
+    # Check for connections with 1.0s timeout per tick
+    srv.settimeout(1.0)
 
-total_mb = sysinfo.ram_total() // (1024 * 1024)
-avail_mb = sysinfo.ram_avail() // (1024 * 1024)
+    print("=" * 55)
+    print("  🚀 PocketPy MicroServer läuft auf:")
+    print("     http://127.0.0.1:" + str(PORT))
+    print("  (Auch im Visual-Tab der App sofort sichtbar)")
+    print("  Warte auf Anfragen (Timeout: 60s)...")
+    print("=" * 55)
 
-html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>PocketPy MicroServer</title><style>body { background: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 30px; text-align: center; } .card { background: #1e293b; border-radius: 12px; padding: 24px; max-width: 450px; margin: 0 auto; box-shadow: 0 4px 16px rgba(0,0,0,0.5); } h1 { color: #38bdf8; margin-bottom: 8px; } .stat { text-align: left; padding: 8px 12px; margin: 8px 0; background: #334155; border-radius: 6px; }</style></head><body><div class='card'><h1>🚀 PocketPy 2.0 MicroServer</h1><p>Reiner C11 Socket Server auf Android!</p><div class='stat'><b>Gerät:</b> " + sysinfo.brand() + " " + sysinfo.model() + "</div><div class='stat'><b>OS:</b> Android " + str(sysinfo.android_release()) + " (API " + str(sysinfo.sdk_int()) + ")</div><div class='stat'><b>RAM:</b> " + str(avail_mb) + " MB frei / " + str(total_mb) + " MB</div><div class='stat'><b>Uptime:</b> " + str(sysinfo.uptime()) + " Sekunden</div></div></body></html>"
+    crlf = "\r\n"
+    served = 0
+    max_requests = 10
+    start_time = time.time()
 
-response = "HTTP/1.1 200 OK\\r\\nContent-Type: text/html; charset=utf-8\\r\\nContent-Length: " + str(len(html)) + "\\r\\nConnection: close\\r\\n\\r\\n" + html
-client.send(response)
-client.close()
-srv.close()
-print("Antwort gesendet und Server sauber geschlossen!")
+    while served < max_requests and (time.time() - start_time < 60.0):
+        try:
+            client, addr = srv.accept()
+        except Exception:
+            # 1s tick passed without connection, continue listening
+            continue
+
+        try:
+            client.settimeout(2.0)
+            req = client.recv(2048)
+            req_str = req.decode() if isinstance(req, bytes) else str(req)
+            req_line = req_str.split("\n")[0].strip() if req_str else "Unknown"
+
+            total_mb = sysinfo.ram_total() // (1024 * 1024)
+            avail_mb = sysinfo.ram_avail() // (1024 * 1024)
+
+            html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>PocketPy MicroServer</title><style>body { background: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 30px; text-align: center; } .card { background: #1e293b; border-radius: 12px; padding: 24px; max-width: 450px; margin: 0 auto; box-shadow: 0 4px 16px rgba(0,0,0,0.5); } h1 { color: #38bdf8; margin-bottom: 8px; } .stat { text-align: left; padding: 8px 12px; margin: 8px 0; background: #334155; border-radius: 6px; }</style></head><body><div class='card'><h1>🚀 PocketPy 2.0 MicroServer</h1><p>Reiner C11 Socket Server auf Android!</p><div class='stat'><b>Gerät:</b> " + sysinfo.brand() + " " + sysinfo.model() + "</div><div class='stat'><b>OS:</b> Android " + str(sysinfo.android_release()) + " (API " + str(sysinfo.sdk_int()) + ")</div><div class='stat'><b>RAM:</b> " + str(avail_mb) + " MB frei / " + str(total_mb) + " MB</div><div class='stat'><b>Uptime:</b> " + str(sysinfo.uptime()) + " Sekunden</div></div></body></html>"
+
+            body = html.encode()
+            hdr = (
+                "HTTP/1.1 200 OK" + crlf +
+                "Content-Type: text/html; charset=utf-8" + crlf +
+                "Content-Length: " + str(len(body)) + crlf +
+                "Connection: close" + crlf +
+                crlf
+            )
+            response = hdr.encode() + body
+            client.send(response)
+            client.close()
+            served += 1
+            print("[" + str(served) + "/" + str(max_requests) + "] " + req_line + " von " + str(addr[0]) + ":" + str(addr[1]) + " -> 200 OK")
+        except Exception as ex:
+            print("Client-Fehler:", ex)
+            try:
+                client.close()
+            except Exception:
+                pass
+
+    srv.close()
+    print("=" * 55)
+    print("Server ordentlich beendet.")
+    print("=" * 55)
 """.trimIndent()
     )
 }
